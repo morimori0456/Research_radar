@@ -2,7 +2,7 @@
 # 各トピックは arXiv カテゴリ + キーワード + 選別基準 + 日次上限。
 
 global:
-  max_deep_per_day: 5        # 1日に deep research する総数の上限
+  max_deep_per_day: 6        # 1日に deep research する総数の上限
   lookback_days: 2           # 何日前までの新着を対象にするか
 
 topics:
@@ -46,4 +46,4 @@ topics:
     relevance_criteria: >
       次世代アーキテクチャの設計・学習に着想を与えるか。
       スケール則・新しい構造・学習効率の改善は高優先。
-    quota: 1
+    quota: 2
