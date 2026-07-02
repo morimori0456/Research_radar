@@ -20,8 +20,8 @@ topics:
       ベンチマーク/評価手法の新提案は特に高優先。
     quota: 2
 
-  # ── P2: Foundation Model 蒸留 ──────────────────────────
-  - name: fm_distillation
+  # ── P2: Foundation Model 蒸留 + 適合(fine-tuning) ──────
+  - name: fm_distill_finetune
     project: P2
     arxiv_categories: [cs.LG, cs.CL, cs.CV]
     keywords:
@@ -29,21 +29,35 @@ topics:
       - "foundation model distillation"
       - "model compression"
       - "teacher student"
+      - "fine-tuning"
+      - "domain adaptation"
+      - "transfer learning"
+      - "parameter efficient fine-tuning"
     relevance_criteria: >
       自社で蒸留プロセスを回すのに実務適用できる手法か。
       再現可能な recipe / 新しい loss / capacity gap 対策は高優先。
+      加えて fine-tuning は「他機種・他ドメインへの適合」の観点で評価する:
+      少データでの適合、ドメインギャップの克服、PEFT/LoRA等の効率的適合、
+      基盤モデルを別ドメインに転用する recipe は高優先。
     quota: 2
 
-  # ── P3: 次世代アーキテクチャ ────────────────────────────
+  # ── P3: 次世代アーキテクチャ (VLA / World Model / E2E) ──
   - name: next_arch
     project: P3
-    arxiv_categories: [cs.LG, cs.CV, cs.CL]
+    arxiv_categories: [cs.LG, cs.CV, cs.RO, cs.CL]
     keywords:
+      - "vision language action"
+      - "VLA"
+      - "world model"
+      - "end-to-end autonomous driving"
+      - "end-to-end driving"
+      - "driving policy"
       - "efficient transformer"
       - "state space model"
-      - "novel architecture"
-      - "attention alternative"
     relevance_criteria: >
       次世代アーキテクチャの設計・学習に着想を与えるか。
-      スケール則・新しい構造・学習効率の改善は高優先。
+      特に以下を高優先: VLA (vision-language-action) モデルの構造・学習、
+      world model (予測・シミュレーション・表現学習)、
+      最新の end-to-end 自動運転アーキテクチャ。
+      スケール則・新しい構造・学習効率の改善も対象。
     quota: 2
