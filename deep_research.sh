@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stage 2 (個人側): 個人Claude で候補を選別し、選ばれたものだけ深掘りブリーフ生成。
+# Stage 2: Claude で候補を選別し、選ばれたものだけ深掘りブリーフ生成。
 # 出力は briefs/YYYY-MM-DD/ 配下。公開情報(arXiv)のみを扱う。
 set -euo pipefail
 
@@ -16,11 +16,11 @@ if [[ ! -f candidates.json ]]; then
 fi
 
 N=$(jq '.candidates | length' candidates.json)
-echo "[deep] $N 候補を個人Claudeで処理"
+echo "[deep] $N 候補をClaudeで処理"
 
 PROMPT=$(cat <<EOF
 あなたはリサーチアシスタント。candidates.json に arXiv の新着候補がある。
-これは公開情報のみで、社内情報は一切含まない。
+これは arXiv の公開情報のみ。
 
 タスク:
 1. 各候補を relevance_criteria (topics.yaml参照) で0-5点評価し、選別する
@@ -29,7 +29,7 @@ PROMPT=$(cat <<EOF
    深掘りブリーフを briefs/$DATE/<arxiv-id>.md に1件1ページで作成:
    - 何を解決する論文か (2-3文)
    - 手法の核心 (箇条書き3-5点)
-   - 自社プロジェクト(P1/P2/P3)への適用可能性と、試すべき実験アイデア
+   - 追っているプロジェクト(P1/P2/P3)への適用可能性と、試すべき実験アイデア
    - 元論文URL
 4. 選ばれなかった候補は briefs/$DATE/rejected.md に「id: title — 落とした理由」で記録
 5. 最後に briefs/$DATE/DIGEST.md を作成:
@@ -41,7 +41,7 @@ topics.yaml と candidates.json を読んで実行せよ。
 EOF
 )
 
-# 個人Claude (Claude Pro) をヘッドレス実行
+# Claude をヘッドレス実行
 claude -p "$PROMPT" --dangerously-skip-permissions
 
 echo "[deep] 完了: $OUTDIR"

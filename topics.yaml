@@ -34,7 +34,7 @@ topics:
       - "transfer learning"
       - "parameter efficient fine-tuning"
     relevance_criteria: >
-      自社で蒸留プロセスを回すのに実務適用できる手法か。
+      蒸留プロセスを実務で回すのに適用できる手法か。
       再現可能な recipe / 新しい loss / capacity gap 対策は高優先。
       加えて fine-tuning は「他機種・他ドメインへの適合」の観点で評価する:
       少データでの適合、ドメインギャップの克服、PEFT/LoRA等の効率的適合、
