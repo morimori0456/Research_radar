@@ -1,0 +1,49 @@
+# 追う分野の定義。プロジェクトに対応させる。
+# 各トピックは arXiv カテゴリ + キーワード + 選別基準 + 日次上限。
+
+global:
+  max_deep_per_day: 5        # 1日に deep research する総数の上限
+  lookback_days: 2           # 何日前までの新着を対象にするか
+
+topics:
+  # ── P1: Planner AI + 評価 ──────────────────────────────
+  - name: planner_ai
+    project: P1
+    arxiv_categories: [cs.RO, cs.AI, cs.LG]
+    keywords:
+      - "motion planning"
+      - "trajectory prediction"
+      - "planner evaluation"
+      - "closed-loop simulation"
+    relevance_criteria: >
+      自動運転のプランナー実装・評価指標に直接使える知見か。
+      ベンチマーク/評価手法の新提案は特に高優先。
+    quota: 2
+
+  # ── P2: Foundation Model 蒸留 ──────────────────────────
+  - name: fm_distillation
+    project: P2
+    arxiv_categories: [cs.LG, cs.CL, cs.CV]
+    keywords:
+      - "knowledge distillation"
+      - "foundation model distillation"
+      - "model compression"
+      - "teacher student"
+    relevance_criteria: >
+      自社で蒸留プロセスを回すのに実務適用できる手法か。
+      再現可能な recipe / 新しい loss / capacity gap 対策は高優先。
+    quota: 2
+
+  # ── P3: 次世代アーキテクチャ ────────────────────────────
+  - name: next_arch
+    project: P3
+    arxiv_categories: [cs.LG, cs.CV, cs.CL]
+    keywords:
+      - "efficient transformer"
+      - "state space model"
+      - "novel architecture"
+      - "attention alternative"
+    relevance_criteria: >
+      次世代アーキテクチャの設計・学習に着想を与えるか。
+      スケール則・新しい構造・学習効率の改善は高優先。
+    quota: 1

@@ -1,0 +1,7 @@
+# logs / temp
+*.log
+__pycache__/
+*.pyc
+
+# 収集の生データは日次で再生成されるため任意。監査したい場合はこの行を消す
+candidates.json
