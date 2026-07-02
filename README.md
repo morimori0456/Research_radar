@@ -6,16 +6,23 @@
 ## カスケード設計
 
 ```
-Stage 1 (自動・安い)   arXiv収集              fetch_candidates.py
-Stage 2 (絞って深く)   Claudeで選別+深掘り     deep_research.sh
+Stage 1 (自動・安い)   arXiv収集 + SNS注目度    fetch_candidates.py
+Stage 2 (絞って深く)   Claudeで選別+深掘り      deep_research.sh
 Stage 3 (毎朝・あなた) DIGEST.md のTOP3だけ読む
+週次   (日曜・自動)    テーマ統合+精読推薦      weekly_review.sh
 ```
 
-- **Stage 1** は AI を使わず arXiv から候補を広く集めるだけ(数秒・無料)
-- **Stage 2** は Claude が候補を選別し、選ばれた数件だけ1ページのブリーフに深掘り
+- **Stage 1** は AI を使わず arXiv から候補を広く集める。加えて
+  Hugging Face Daily Papers からコミュニティ注目度(upvotes)を取得し、
+  各候補に注釈 + 分野外でも注目度の高い論文を wildcard 候補として追加(探索枠)
+- **Stage 2** は Claude が候補を選別し、選ばれた数件だけ1ページのブリーフに深掘り。
+  注目度は relevance を上書きしない副次シグナル。wildcard は最大1件/日
 - **Stage 3** はあなた。読むのは DIGEST の TOP3 だけ
+- **週次レビュー** が「読んだ」を「身についた」に変換する:
+  テーマ統合 / 原論文を精読すべき1本の推薦 / 実験アイデアの未着手棚卸し /
+  記憶チェック5問 / topics.yaml の調整提案
 
-扱うのは arXiv の公開情報のみ。生成物(ブリーフ)を git で蓄積し、
+扱うのは arXiv / Hugging Face の公開情報のみ。生成物(ブリーフ)を git で蓄積し、
 必要なら下流(実験化など)へ渡す。
 
 ## 構成
@@ -24,11 +31,13 @@ Stage 3 (毎朝・あなた) DIGEST.md のTOP3だけ読む
 research_loop/
 ├── README.md
 ├── topics.yaml            # 追う分野の定義 (カテゴリ/キーワード/選別基準/上限)
-├── fetch_candidates.py    # Stage1: arXiv収集 → candidates.json
+├── fetch_candidates.py    # Stage1: arXiv収集 + HF注目度 → candidates.json
 ├── deep_research.sh       # Stage2: Claudeで選別+ブリーフ生成
 ├── run_research.sh        # オーケストレータ (収集→深掘り→push)
+├── weekly_review.sh       # 週次: テーマ統合/精読推薦/実験棚卸し/記憶チェック
 ├── pull_experiments.sh    # 下流: ブリーフから実験スクリプト雛形を生成 (任意)
-└── briefs/YYYY-MM-DD/      # 出力: 各ブリーフ + DIGEST.md + rejected.md
+├── briefs/YYYY-MM-DD/      # 日次出力: 各ブリーフ + DIGEST.md + rejected.md
+└── weekly/YYYY-Wxx.md      # 週次出力: WEEKLYレビュー
 ```
 
 ## セットアップ

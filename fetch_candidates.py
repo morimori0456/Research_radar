@@ -80,6 +80,49 @@ def parse_entries(xml_bytes, cutoff):
     return out
 
 
+def fetch_hf_buzz(lookback_days):
+    """Hugging Face Daily Papers からコミュニティ注目度(upvotes)を取得。
+
+    戻り値: (buzz_map: arxiv_id(無版) -> upvotes, top_papers: 注目度上位のエントリ一覧)
+    SNSでの話題性の代替シグナル。失敗しても収集全体は止めない。
+    """
+    buzz = {}
+    papers = {}
+    for d in range(lookback_days + 1):
+        date = (datetime.now(timezone.utc) - timedelta(days=d)).strftime("%Y-%m-%d")
+        url = f"https://huggingface.co/api/daily_papers?date={date}"
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "research-loop/1.0"})
+            with urllib.request.urlopen(req, timeout=30) as r:
+                data = json.loads(r.read())
+        except Exception as ex:
+            print(f"[buzz] {date} error: {ex}", file=sys.stderr)
+            continue
+        if not isinstance(data, list):
+            continue
+        for item in data:
+            p = item.get("paper") or {}
+            pid = p.get("id")
+            if not pid:
+                continue
+            up = p.get("upvotes", 0) or 0
+            if up > buzz.get(pid, -1):
+                buzz[pid] = up
+                papers[pid] = {
+                    "id": pid,
+                    "title": " ".join((p.get("title") or "").split()),
+                    "abstract": " ".join((p.get("summary") or "").split())[:1500],
+                    "authors": [],
+                    "published": item.get("publishedAt", ""),
+                    "url": f"https://arxiv.org/abs/{pid}",
+                    "hf_upvotes": up,
+                }
+        time.sleep(1)
+    top = sorted(papers.values(), key=lambda x: -x["hf_upvotes"])
+    print(f"[buzz] HF daily papers: {len(buzz)} papers", file=sys.stderr)
+    return buzz, top
+
+
 def main():
     here = Path(__file__).parent
     cfg = load_topics(here / "topics.yaml")
@@ -105,6 +148,29 @@ def main():
             candidates.append(e)
         print(f"[fetch]   {len(entries)} new", file=sys.stderr)
         time.sleep(3)  # arXiv API のレート制限を尊重
+
+    # ── SNS話題性 (HF Daily Papers) ──────────────────────────
+    buzz, hf_top = fetch_hf_buzz(cfg["global"]["lookback_days"])
+
+    # 既存候補に注目度を注釈 (arxiv id の版サフィックスを除いて照合)
+    for c in candidates:
+        base_id = c["id"].split("v")[0]
+        c["hf_upvotes"] = buzz.get(base_id, 0)
+
+    # wildcard 枠: トピック外でも注目度の高い論文を候補に追加 (探索性の注入)
+    base_ids = {c["id"].split("v")[0] for c in candidates}
+    n_wild = 0
+    for p in hf_top:
+        if n_wild >= 3:
+            break
+        if p["id"] in base_ids or p["hf_upvotes"] < 10:
+            continue
+        p["topic"] = "sns_wildcard"
+        p["project"] = "EXPLORE"
+        p["quota"] = 1
+        candidates.append(p)
+        n_wild += 1
+    print(f"[buzz] wildcard candidates added: {n_wild}", file=sys.stderr)
 
     out_path = here / "candidates.json"
     out_path.write_text(json.dumps({

@@ -24,6 +24,10 @@ PROMPT=$(cat <<EOF
 
 タスク:
 1. 各候補を relevance_criteria (topics.yaml参照) で0-5点評価し、選別する
+   - hf_upvotes はコミュニティ注目度(SNS話題性の代替)。relevance を上書きしない
+     副次シグナルとして扱い、同点時のタイブレークに使う
+   - topic=sns_wildcard の候補は「分野外だが注目度が高い」探索枠。
+     学びの価値があれば最大1件まで選んでよい (視野を広げるための枠)
 2. トピックごとの quota と全体の max_deep_per_day の上限内で、高得点のものだけ選ぶ
 3. 選ばれた各論文について、abstract と (必要なら) 公開情報から
    深掘りブリーフを briefs/$DATE/<arxiv-id>.md に1件1ページで作成:
