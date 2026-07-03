@@ -34,10 +34,13 @@ research_loop/
 ├── fetch_candidates.py    # Stage1: arXiv収集 + HF注目度 → candidates.json
 ├── deep_research.sh       # Stage2: Claudeで選別+ブリーフ生成
 ├── run_research.sh        # オーケストレータ (収集→深掘り→push)
-├── weekly_review.sh       # 週次: テーマ統合/精読推薦/実験棚卸し/記憶チェック
+├── weekly_review.sh       # 週次: テーマ統合/精読推薦/実験棚卸し/記憶チェック/出力キュー
+├── monthly_review.sh      # 月次: スキルマップ/基礎テーマ/ポートフォリオ監査/外部FB
 ├── pull_experiments.sh    # 下流: ブリーフから実験スクリプト雛形を生成 (任意)
 ├── briefs/YYYY-MM-DD/      # 日次出力: 各ブリーフ + DIGEST.md + rejected.md
-└── weekly/YYYY-Wxx.md      # 週次出力: WEEKLYレビュー
+├── weekly/YYYY-Wxx.md      # 週次出力: WEEKLYレビュー
+├── monthly/YYYY-MM.md      # 月次出力: 方向修正レビュー
+└── SKILL_MAP.md            # 月次で更新されるスキル自己評価 (根拠必須)
 ```
 
 ## セットアップ
