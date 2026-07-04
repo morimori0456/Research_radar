@@ -18,6 +18,8 @@ PROMPT=$(cat <<EOF
 自動運転AIの研究開発者で、最前線のMLエンジニアを目指している。
 
 入力資料:
+- 人生計画: LIFE_PLAN.md (最優先。全提案は現フェーズ目標と quarterly OKR に沿わせる)
+- 論文パイプライン: RESEARCH_PIPELINE.md
 - 直近の週次レビュー: $WEEKLIES
 - スキルマップ: SKILL_MAP.md (なければ今回作成する)
 - 知識リポジトリ: ~/w/ML_report (公開ポートフォリオ。構成はREADMEを見よ)
@@ -53,7 +55,12 @@ SKILL_MAP.md を更新 (なければ作成) する。軸は:
 (NAVSIM leaderboard等), OSS へのPR, 勉強会/カンファ登壇。
 ウェブ検索が使えるなら直近の締切があるものを優先。
 
-## 6. ループ自体の監査
+## 6. 論文パイプライン更新
+RESEARCH_PIPELINE.md を更新: 締切カレンダーの確認、アイデア在庫の状態遷移
+(radar/週次から新しい種があれば追加)、ターゲット会議への逆算で
+「今月やるべきだったのにやっていないこと」を指摘。
+
+## 7. ループ自体の監査
 日次/週次/月次のループが形骸化していないか。読まれていない出力、
 形式的になったセクションがあれば削減を提案。ループは増やすほど
 維持コストがかかる — 価値が薄いものは止める勇気を持つ。
@@ -68,7 +75,8 @@ EOF
 claude -p "$PROMPT" --dangerously-skip-permissions
 
 if [[ -f "$OUTDIR/$MONTH.md" ]]; then
-  git add "$OUTDIR/" SKILL_MAP.md 2>/dev/null || git add "$OUTDIR/"
+  git add "$OUTDIR/"
+  git add SKILL_MAP.md RESEARCH_PIPELINE.md 2>/dev/null || true
   git commit -m "research: monthly review $MONTH" || echo "[monthly] 変更なし"
   git push origin main && echo "[monthly] push 完了" || echo "[monthly] push 失敗"
 fi
