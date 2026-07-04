@@ -41,6 +41,18 @@ PROMPT=$(cat <<EOF
    - 続いて全ブリーフへのリンク一覧
    - プロジェクト別の要点
 
+スタイル規則 (重要):
+- 専門用語・手法名は英語のまま書く。無理に日本語訳しない
+  (例:「等角予測」ではなく conformal prediction、「世界モデル」ではなく world model)
+- 初出の専門用語には括弧か1文で平易な説明を付ける。読者は ML 実務者だが、
+  その論文のサブ分野は初見という前提で書く
+  (例: "conformal prediction (予測の外れ率を分布仮定なしで保証する統計手法) を...")
+- 説明なしで使ってよいのは基礎語だけ (loss, transformer, fine-tuning, encoder 等)
+- 略語は初出で必ず展開+一言説明する
+  (例: "GRPO (Group Relative Policy Optimization; PPOの簡略版でLLMのRL学習に使う)"、
+   "TTC (Time-to-Collision; 衝突までの残り時間)")。2回目以降は略語のみでよい
+- DIGEST の TOP3 も同じ規則。専門用語の羅列で理由を書かない
+
 topics.yaml と candidates.json を読んで実行せよ。
 EOF
 )
