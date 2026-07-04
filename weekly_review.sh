@@ -57,6 +57,22 @@ notebookで実証すべきポイント3つ) を書く。
 選定基準: 数ヶ月後も価値が残る内容 > 今週だけの新しさ。
 読むだけで終わった週が続いていたら、その旨を率直に指摘する。
 
+## 7. 身体基盤の自己申告欄 (空欄で出力する)
+以下のフォーマットを WEEKLY.md 末尾に置く。本人が日曜夜に記入する:
+- 先週の睡眠 (平均時間と質を1行):
+- 先週の運動 (回数と内容を1行):
+- 一言 (エネルギー面で気づいたこと):
+前週の WEEKLY.md に記入があれば傾向をコメントし、
+2週連続で空欄なら「記録されていない」と冒頭で指摘する。
+
+## 追加タスク: Living Survey の更新 (WEEKLY.md とは別)
+surveys/README.md の構造に従い、今週のブリーフを surveys/ 配下の
+テーマ別サーベイに統合せよ:
+- 該当テーマの「重要論文リスト」に今週の選定論文を追加 (briefへの相対リンク付き)
+- 「一言でいうと」「系譜マップ」は追記でなく上書きで磨く
+- 同一テーマのブリーフが3本以上溜まっていて該当サーベイがなければ新設
+- 「自分の実験・メモ」欄は絶対に書き換えない
+
 スタイル規則: 専門用語・手法名は英語のまま (無理な和訳禁止)。
 初出の専門用語には1行の平易な説明を付ける。
 
@@ -67,7 +83,7 @@ EOF
 claude -p "$PROMPT" --dangerously-skip-permissions
 
 if [[ -f "$OUTDIR/$WEEK.md" ]]; then
-  git add "$OUTDIR/"
+  git add "$OUTDIR/" surveys/
   git commit -m "research: weekly review $WEEK" || echo "[weekly] 変更なし"
   git push origin main && echo "[weekly] push 完了" || echo "[weekly] push 失敗"
 fi
