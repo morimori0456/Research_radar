@@ -6,6 +6,9 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 cd "$HERE"
 
+# スマホ (GitHub Mobile) からの編集を取り込む。オフライン/競合でもループは止めない
+git pull --rebase --autostash origin main 2>/dev/null || echo "[pull] スキップ (オフラインor競合)"
+
 echo "===== Research Loop $(date +'%F %T') ====="
 
 # Stage 1: arXiv 収集

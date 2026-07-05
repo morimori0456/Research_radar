@@ -6,6 +6,9 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 cd "$HERE"
 
+# スマホ (GitHub Mobile) からの編集を取り込む
+git pull --rebase --autostash origin main 2>/dev/null || echo "[pull] スキップ (オフラインor競合)"
+
 MONTH="$(date +%Y-%m)"
 OUTDIR="monthly"
 mkdir -p "$OUTDIR"
