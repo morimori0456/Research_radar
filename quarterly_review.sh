@@ -9,6 +9,9 @@ cd "$HERE"
 
 # スマホ (GitHub Mobile) からの編集を取り込む
 git pull --rebase --autostash origin main 2>/dev/null || echo "[pull] スキップ (オフラインor競合)"
+# RUNWAY.md (private repo: life-state) も最新化
+git -C /home/jetson/w/life-state pull --rebase --autostash origin main 2>/dev/null \
+  || echo "[pull] life-state スキップ"
 
 Q="$(date +%Y)-Q$(( ($(date +%-m)-1)/3 + 1 ))"
 OUTDIR="quarterly"
