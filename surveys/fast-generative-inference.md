@@ -1,5 +1,5 @@
 # Fast Generative Inference — 推論ステップを削る生成 — Living Survey
-最終更新: 2026-07-19
+最終更新: 2026-07-26
 
 > 新設 (2026-W29)。プランナー (P1) と world model (P3) の双方で「反復 denoising を捨てる」
 > 論文が独立に3本以上溜まり、既存2サーベイのどちらにも収まらなくなったため分離した。
@@ -23,6 +23,7 @@
   - **DriftWorld (15065, P3)** — action-conditioned drift を学習時に獲得し、推論は現在観測+候補 action から
     単一 forward で未来フレーム生成。diffusion 比 **平均17倍高速・30+fps**
   - **RynnWorld-4D (06559)** — denoising を回さず 1-forward で行動を出す(4D 予測系からの流入)
+  - **ABot-World-0 / ODE distillation (19191)** — 多step の拡散/フロー生成を **少step に蒸留**しつつ、**LongForcing** で長 self-rollout の distribution shift を抑える。few-step 化と long-horizon drift 対策を同時に解く(vla-world-model と相互参照)
 - **削った先に何が開くか**(速さが機能を生む)
   - 推論時 **action search** が実用域に入る (15065): 1制御周期あたり評価できる候補軌道の本数が桁で増える
   - **オフライン代理評価器**になる (15065): rollout スコアが ground truth と最大 **0.99 相関**
@@ -33,11 +34,15 @@
     realism–diversity パレート。few-step 化の代償を明示的に測る枠組み
   - **集約の設計**: **DRIFT (14507)** — 多仮説を1本に畳む集約を **proposal 品質ラベルなし**で学習
 - 直交する軸: **制約の厳守**。**MDOC (12423)** は CBF 射影を生成ステップに挿入し、
-  ステップ数を削っても hard constraint (衝突回避・走行可能領域) を破らない道を示す
+  ステップ数を削っても hard constraint (衝突回避・走行可能領域) を破らない道を示す。
+  **BiCompoDiff (21341)** は競合制約を **微分可能 energy** 化して逆過程に勾配注入し、制約ごとに破れ量を分解できる
+  (annealed MCMC の精緻化ステップは追加コストと制約充足のトレードオフ = ステップ数と品質の同じ軸)
 
 ## 重要論文リスト
 | 日付 | 論文 | 一言 | brief |
 |---|---|---|---|
+| 2026-07-25 | BiCompoDiff (2607.21341) | 制約を微分可能 energy 化し拡散逆過程に勾配注入、制約別に破れを分解 | [brief](../briefs/2026-07-25/2607.21341v1.md) |
+| 2026-07-23 | ABot-World-0 (2607.19191) | ODE distillation で少step 化 + LongForcing で long-horizon drift 抑制 | [brief](../briefs/2026-07-23/2607.19191.md) |
 | 2026-07-18 | DriftWorld (2607.15065) | 一発生成の action-conditioned world model、17倍高速・rollout 評価 0.99 相関 | [brief](../briefs/2026-07-18/2607.15065.md) |
 | 2026-07-18 | DRIFT (2607.14507) | 軌道 latent の one-step drift で 48 proposal を1パス、ラベルなし集約 | [brief](../briefs/2026-07-18/2607.14507.md) |
 | 2026-07-16 | MDOC (2607.12423) | CBF 射影で生成中も hard constraint を厳守、score は dynamics から計算 | [brief](../briefs/2026-07-16/2607.12423.md) |

@@ -1,12 +1,15 @@
 # VLA / World Model / E2E Driving — Living Survey
-最終更新: 2026-07-19
+最終更新: 2026-07-26
 
 ## 一言でいうと
 言語・視覚・行動を1つのモデルで扱う **VLA (Vision-Language-Action)** と、世界の遷移を予測する
-**world model** を end-to-end 自動運転にどう接続するかを追う分野。統合の設計空間はほぼ埋まり、
-論点は3つに絞れた: (1) **行動ラベルなしの大量動画から監督信号をどう作るか**(latent action / flow / self-play)、
-(2) **推論を何ステップに畳むか**(反復 denoising → 一発生成)、(3) **どれだけ長い文脈をどこで払って持つか**
-(推論時の fast weights vs 学習時の replay)。(2)(3) は車載レイテンシ予算に直結する(R3)。
+**world model** を end-to-end 自動運転にどう接続するかを追う分野。統合の設計空間はほぼ埋まり、論点は
+「どう繋ぐか」から **「世界状態をどう保持し、どこで grounding するか」** に降りてきた:
+(1) 予測ターゲットは **pixel か latent か**(pixel は細かいがノイズ弱・latent は頑健だが劣化 → pre-train で
+pixel 接地し実運用は latent 専用)、(2) 状態は **観測履歴か明示 register か**、action head は **単一か MoE か**、
+(3) 行動ラベルなし監督(latent action / flow / self-play)と長文脈のコスト配分(fast weights vs replay)。
+横断の教訓として continual では **world model は覚え actor だけ忘れる**(成分別に忘却対策を配れ)。
+(1)(2) は車載レイテンシ・頑健性予算に直結する(R3)。
 
 ## 系譜マップ
 - 統合方式(world model の恩恵をどう受けるか)— R3 分類マップの本体
@@ -17,7 +20,18 @@
   - (e) 単一 world latent に理解・予測・行動を統一: **Orca (30534)** — 凍結 latent + 軽量 readout
   - (f) 観測と行動の**座標系を揃える**: **robot-centric pointmaps (11498)** — 各ピクセルに ego/ロボット座標の 3D を格納。dense グリッド形状を保つので既存 2D VLA に最小改修で追加、未知カメラ配置への汎化が拡大
   - (g) 高レベル出力のインタフェース設計: **ABot-N1 (10383)** — slow (CoT 推論) が **pixel goal (画像空間アンカー)** を出し fast (action expert) が waypoint。数値座標より座標ドリフトに強く、複数タスクを1形式に畳める
-- 行動ラベルなしで監督を作る(今週の主戦線)
+- 世界状態と行動を「どう持つか」(2026-W30 の主戦線)— 上の統合方式を横に切る新しい設計軸
+  - 予測ターゲット **pixel か latent か**: **HyWorldVLA (20988)** — pre-train で **pixel 再構成により latent を実映像に接地**、co-fine-tuning/推論は **latent 専用**に絞り高速・頑健。world model のノイズ頑健性を測る評価軸を新設、NAVSIM v1/v2 で pixel/latent 両 baseline 超え
+  - 状態を **観測履歴か明示 register か**: **WorldWeaver (21594)** — **world state registers**(学習可能な記憶スロット、チャンク生成ごとに更新)+ BEV/scene text 接地、状態推論と描画を **Mixture-of-Transformers** で分業。multi-agent/multi-view の状態一貫性
+  - action head を **単一か MoE か**: **MoE VLA (20771)** — action head を MoE 化すると原始技能(車線維持・合流・停止)が expert に自然分離・創発。router 再学習で few-shot 適合
+  - 長ホライズンで崩さない: **ABot-World-0 (19191)** — **LongForcing**(student の長 self-rollout を長ホライズン teacher に整合)+ **ODE distillation**(多step 拡散を少step へ蒸留)で drift 抑制。RTX 5090 単体 720P 16FPS
+  - action を視覚空間で条件付け: **Masked Visual Actions (19343)** — action を pixel 空間の **部分開示された軌跡**として渡す。同一モデルが forward(行動→応答)/inverse(望む運動→行動)両用。imagined rollout が実行と相関 → planning のランキングに使える
+  - 未来幾何を明示 token に: **GeoWorldAD (17521)** — 周辺 agent と自車前方 free-space の短期変化を予測する軽量 **latent future geometry token** を E2E AD に付加。過保守な減速を減らし NAVSIM v1/v2 SOTA
+- continual で「どこが忘れるか」を成分別に測る(2026-W30)
+  - **World Model Remembers, Actor Forgets (19749)** — DreamerV3 系で連続タスクを学ぶと **world model は reward/value/終了構造を retention≈1.0 で保持し actor だけ崩壊**。凍結 world model の夢中 RL では回復せず(0/3)、採点済みの夢への **self-imitation (dream rehearsal)** なら環境対話ゼロで 3/3 回復。忘却対策のリソースは policy 更新経路へ配れ(事前登録・棄却仮説まで報告)
+- 異機体で action space を共有する embodied 基盤モデル
+  - **RynnBrain 1.1 (17977)** — 2B→122B の open な MoE family。「1バックボーン + embodiment-specific masking で異機体を跨ぐ」recipe。標準ベースライン/蒸留 teacher 化の公算(hf=136)
+- 行動ラベルなしで監督を作る
   - latent action: **WALA (11397)** — action-free 動画から実行可能な latent action を学習。予測ターゲットは raw pixel でなく **DINOv3 特徴 + depth の delta**
   - flow を action 表現に: **FlowWAM (13017)** — optical flow は RGB と同形式なので同一動画生成器で dual-stream 化、policy mode / world-model mode を1モデルで。flow は生動画から自動抽出=action-free 事前学習
   - デモを一切使わない: **TerraZero (13028)** — 実ログは**地図形状のみ**、あとは手続き生成 + self-play RL。左側通行まで創発
@@ -34,6 +48,7 @@
 - world model を「評価器」にする(planner-evaluation サーベイと相互参照)
   - **Point as Skeleton (06516)** — 生成型 closed-loop 評価、nuPlan IF 公開
   - **WM Admissibility (07196)** — L0–L4 認定 ladder。視覚品質上位 ≠ 行動追従性上位の「逆転」を実証
+  - **KineBench (19876)** — 評価から **抽出器誤差を追い出す**。生成映像から行動を逆推定する IDM をやめ、汎用視覚 FM で手先 6D pose を直接抽出 → 物理シミュで再実行して closed-loop 検証。IDM が OOD で壊れる **attribution ambiguity** を回避(planner-evaluation サーベイと相互参照)
 - 学習パラダイム
   - **Post-Training in E2E AD (08072)** — 模倣後の post-training を教師信号の形式で4分類した初の統一サーベイ。「事前学習(模倣)+post-training」の2段構え設計の根拠
 - 実時間化の基準点
@@ -42,6 +57,15 @@
 ## 重要論文リスト
 | 日付 | 論文 | 一言 | brief |
 |---|---|---|---|
+| 2026-07-25 | HyWorldVLA (2607.20988) | pixel+latent hybrid world-VLA、pre-train で pixel 接地し実運用は latent 専用、NAVSIM v1/v2 超え | [brief](../briefs/2026-07-25/2607.20988v1.md) |
+| 2026-07-25 | WorldWeaver (2607.21594) | world state registers + MoT で multi-agent/view の共有状態を保持 | [brief](../briefs/2026-07-25/2607.21594v1.md) |
+| 2026-07-25 | MoE VLA (2607.20771) | MoE action head で原始技能が expert に創発分離、router 再学習で few-shot 適合 | [brief](../briefs/2026-07-25/2607.20771v1.md) |
+| 2026-07-24 | World Model Remembers, Actor Forgets (2607.19749) | world model は保持し actor だけ忘れる、dream rehearsal で環境対話ゼロ回復 | [brief](../briefs/2026-07-24/2607.19749v1.md) |
+| 2026-07-24 | KineBench (2607.19876) | IDM-free kinematic grounding で world model を closed-loop 評価、attribution ambiguity を回避 | [brief](../briefs/2026-07-24/2607.19876v1.md) |
+| 2026-07-23 | Masked Visual Actions (2607.19343) | action を pixel 空間の部分開示軌跡で条件付け、rollout ランキングで planning 改善 | [brief](../briefs/2026-07-23/2607.19343.md) |
+| 2026-07-23 | ABot-World-0 (2607.19191) | LongForcing + ODE distillation で long-horizon drift を抑える action-conditioned world model | [brief](../briefs/2026-07-23/2607.19191.md) |
+| 2026-07-22 | GeoWorldAD (2607.17521) | latent future geometry token で未来 free-space を先読み、過保守を減らし NAVSIM SOTA | [brief](../briefs/2026-07-22/2607.17521.md) |
+| 2026-07-22 | RynnBrain 1.1 (2607.17977) | 2B→122B open MoE、cross-embodiment action space + masking で異機体を跨ぐ | [brief](../briefs/2026-07-22/2607.17977.md) |
 | 2026-07-19 | LongStraw (2607.14952) | 長 context RL を固定 GPU で実行可能に(※実行可能性のみ、精度主張なし) | [brief](../briefs/2026-07-19/2607.14952.md) |
 | 2026-07-18 | RoboTTT (2607.15275) | fast weights で 8K timestep、context 長という新しい scaling 軸 | [brief](../briefs/2026-07-18/2607.15275.md) |
 | 2026-07-18 | DriftWorld (2607.15065) | 一発生成の action-conditioned world model、diffusion 比 17倍 | [brief](../briefs/2026-07-18/2607.15065.md) |
@@ -66,6 +90,12 @@
 | 2026-07-04 | DriveTeach-VLA (2607.01658) | 知覚蒸留+軌道誘導で空間接地を注入、NAVSIM/nuScenes SOTA | [brief](../briefs/2026-07-04/2607.01658.md) |
 
 ## Open Questions
+- **世界状態の default 構成は「latent 中心 + 明示 state register + MoE action head」でいいか** — HyWorldVLA(pixel 接地→latent)
+  ・WorldWeaver(register)・MoE VLA(MoE head)を運転で1つに束ねた時、どの組合せが車載レイテンシ/頑健性で残るか
+- pixel grounding (20988) が noisy 側でだけ効くのは「頑健性」か「OOD 汎化」か。pixel を切る schedule に最適点はあるか
+- continual で actor だけ忘れる (19749) は driving world model + policy でも再現するか。dream rehearsal は
+  環境対話ゼロで旧シナリオ保持を回復するか(replay 容量でなく policy 更新経路にリソースを振る根拠になる)
+- world model 評価の抽出器誤差 (KineBench 19876) は NAVSIM 系でどれだけ結論を歪めているか(P1 と交差)
 - **action-free 事前学習の3方式(latent action 11397 / flow 13017 / 生成 pretraining 09024)は
   運転データで序列が付くか** — 「ラベル付きが少量・生動画が大量」という運転の構造では利得が最も大きい領域
 - context 長の scaling (15275) は運転でどこで飽和するか。fast weights 圧縮は occlusion 後の再認識のような

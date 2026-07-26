@@ -1,12 +1,13 @@
 # Foundation Model Distillation & Adaptation — Living Survey
-最終更新: 2026-07-19
+最終更新: 2026-07-26
 
 ## 一言でいうと
-大きな基盤モデルの能力を**小さく・低メモリ・ローカル実行可能**な形に移し、他ドメイン・
-他機種へ適合させる方法を追う分野。論点は「どう縮めるか(手法)」→「**何で教えるか(蒸留データ)**」→
-「**挙動レベルで診断できているか**」と広がり、今は **teacher の要否そのもの**が問われている:
-生徒自身の軌跡から dense 信号を作る (self-distillation)、teacher の *最終状態* でなく *学習の差分* を運ぶ、
-点ごとの一致でなく *関係構造* を運ぶ。同時に「蒸留データの作り方が静かにデータを壊す」負の知見も出た(R2)。
+大きな基盤モデルの能力を**小さく・低メモリ・ローカル実行可能**な形に移し、他ドメイン・他機種へ適合させる方法を
+追う分野。論点は「どう縮めるか(手法)」→「何で教えるか(データ)」→「挙動で診断できているか」と広がり、
+今の最前線は **「一様に適用する」前提の解体**にある: 蒸留データは **サンプル単位で見ると約半分が有害**なので
+gradient alignment で **gate する**(全データ一様 KD をやめる)、経験は **SFT で焼くと 96% 捨てる**ので文脈経由で
+内在化する、正解を **solver/simulator で自動検証**した合成データで焼く。裏で **teacher の要否**(self / 差分 / 生成)も
+問われ続ける。共通の実務指針は **「まず有害比率・回収率を測ってから recipe を決める」**(R2)。
 
 ## 系譜マップ
 - 何を模倣させるか(手法)
@@ -21,7 +22,11 @@
   - **最終状態でなく「学習の差分」を運ぶ**: **Direct-OPD (05394)** — 小モデルで RL を回し、(pre-RL, post-RL) の log 比を dense な implicit reward として強い student に適用。ターゲット上で高価な RL を回さずに weak→strong
   - **固定 teacher を要さない self-distillation**: **SEED (14777)** — 生徒自身が自分の軌跡から hindsight skill を抽出し、skill 有無の確率差を token 単位の dense 蒸留信号に変換、outcome RL と同時最適化(off-policy 分布ずれを回避)
   - **student 自身を摂動の条件に**: **SAKD (11557)** — teacher の静的特徴でなく進化中の student 特徴を条件に、パラメータフリーの cyclic shift で多様なビューを生成。追加パラメータ・多段学習なしで multi-teacher 級
-- 何で教えるか(データ)
+  - **生成軌跡上で teacher を当てる (on-policy)**: **ABOPD (18835)** — 固定データでなく **student 自身の生成軌跡上で teacher が監督**し exposure bias を潰す。反復/自己回帰生成(diffusion policy・world model・AR planner)全般に横展開。ABot-World-0 の LongForcing はこの long-horizon 版
+- 何で教えるか(データ)— 「一様適用」を捨て選別/検証する(2026-W30 の主戦線)
+  - **サンプル単位で選別する**: **KD Hurt / CHAD (19956)** — Bangla 要約で標準 KD は +0.0003 しか上げず訓練の **約51% が student を悪化**。各サンプルの KD 勾配が validation を下げる方向と揃うか(**gradient alignment**)で有害を弾く gate + **capacity-proportional constraint (CPDP)** で 60M が 50倍の Qwen2.5-3B 超え。コード公開
+  - **経験をどう重みに焼くか**: **Experience Distillation (21051)** — 集めた経験を素朴な **SFT で焼くと ICL 利得の 3.8% しか回収できない**。**context distillation**(文脈で得た ICL 振る舞いを重みへ内在化)なら環境対話ゼロで 64.8%+ を保持、RL 同等を **9.6倍少ない環境サンプル**で
+  - **検証済み合成データで焼く**: **SLAI T-Rex (20145)** — **solver-verified synthetic data**(最適化ソルバで解の正しさを自動検証した合成文書)を SFT に混ぜ人手ラベル無しで正解保証。10K の特化 SFT で GPT-5.4-Mini を +3.98pt。「生成は難しいが検証は容易」なドメイン(実行可能性・衝突判定)に転用可
   - **負の知見**: **Answer-Conditioned CoT (14552)** — 失敗サンプルを gold answer で救済すると答えから逆向きに正当化した chain になり、**correctness filter で検出できない形で**データが劣化(最難問で最大 ~27pt)。症状は early final-answer statement、処方は **answer-blind 生成**
   - 分布の広さ: **ZipDepth (08771)** — 頑健性は teacher でなく multi-domain データで決まる。1/50 サイズで zero-shot 保持
   - 少データの選定: **Few-Medoids (05891)** — クラス centroid 近傍の典型例選定が random に一貫勝ち
@@ -31,6 +36,8 @@
   - **MIPI/MIPU (29526)** — train/deploy エンジンのズレ(training-inference mismatch)と selective acceptance
   - **Flow-ERD (06957)** — entropy 正則化 reverse-KL で teacher 追従と多様性維持を両立
 - 縮めた後の適合(fine-tuning / ドメイン適合)
+  - **凍結特徴 + 極小 head で capacity gap を回避**: **Patch Policy (18236)** — 事前学習 ViT の**パッチ単位の密特徴を凍結**したまま軽量 policy に直接食わせ、fine-tune 済み OpenVLA-OFT を **+18%・学習パラメータ約 0.7%**。「大モデルの価値の大半は *凍結特徴* にある」/ **Point Ladder Tuning (19171)** — 凍結 point backbone + **2.7% param** で downsampling が捨てた局所幾何を ladder で拾い直す PEFT、AD の LiDAR 知覚適合に直結
+  - **hypernetwork で adapter を生成/融合**: **DA-MergeLoRA (17467)** — ドメイン別 LoRA ライブラリを hypernetwork で学習的に merge、新規デプロイ先の**無ラベル少データ**適合 / **Hypernetwork Knowledge Injection の scaling law (19604)** — 適合を「対象ごとに LoRA を都度学習」から「hypernetwork が adapter を生成」へ amortize、**OOD で急な scaling**。PAW(02512)の系譜に scaling 則を与える
   - **容量の配り直し**: **UMoE (11444)** — SFT の *前* に低 saliency expert を prune → 摂動で regrow。**パラメータ数・推論コスト不変**のまま単一 frozen recipe で 2アーキ×5ドメイン×12ベンチ全勝
   - **入力仕様の違いを branch で吸収**: **MBTI (12782)** — 入力を共通仕様に潰さず連続帯ごとに branch 分割し branch 別 LoRA + attention 融合。センサ構成が違う他機種への適合の縮図(学習は全体の 2.3%)
   - PEFT 比較: **Efficient PEFT (02158)** — (精度, メモリ, エネルギー) の比較表
@@ -42,6 +49,14 @@
 ## 重要論文リスト
 | 日付 | 論文 | 一言 | brief |
 |---|---|---|---|
+| 2026-07-26 | SLAI T-Rex (2607.20145) | solver 検証済み合成データで trillion MoE を OR ドメインへ full-param 適合 | [brief](../briefs/2026-07-26/2607.20145.md) |
+| 2026-07-25 | Experience Distillation (2607.21051) | 経験を context distillation で内在化、SFT が捨てる 96% を回収 | [brief](../briefs/2026-07-25/2607.21051v1.md) |
+| 2026-07-24 | KD Hurt / CHAD (2607.19956) | 蒸留データの約半分が有害、gradient alignment で per-sample に gate | [brief](../briefs/2026-07-24/2607.19956v1.md) |
+| 2026-07-24 | Hypernetwork Knowledge Injection (2607.19604) | hypernetwork が LoRA を生成、OOD で急な scaling law | [brief](../briefs/2026-07-24/2607.19604v1.md) |
+| 2026-07-23 | ABOPD (2607.18835) | on-policy distillation、student の生成軌跡上で teacher が監督し exposure bias を潰す | [brief](../briefs/2026-07-23/2607.18835.md) |
+| 2026-07-23 | Point Ladder Tuning (2607.19171) | 凍結 point backbone + 2.7% param で局所幾何を拾い直す PEFT、LiDAR 適合 | [brief](../briefs/2026-07-23/2607.19171.md) |
+| 2026-07-22 | Patch Policy (2607.18236) | 凍結 ViT 密特徴 + 極小 head で fine-tune 済み VLA を +18%・学習 0.7% | [brief](../briefs/2026-07-22/2607.18236.md) |
+| 2026-07-22 | DA-MergeLoRA (2607.17467) | ドメイン別 LoRA を hypernetwork で融合し無ラベル少データ適合 | [brief](../briefs/2026-07-22/2607.17467.md) |
 | 2026-07-18 | SEED (2607.14777) | 生徒自身の軌跡から hindsight skill を抽出、確率差を dense 蒸留信号に | [brief](../briefs/2026-07-18/2607.14777.md) |
 | 2026-07-18 | Answer-Conditioned CoT (2607.14552) | gold を見せた chain 生成は filter を通り抜けてデータを最大27pt劣化させる | [brief](../briefs/2026-07-18/2607.14552.md) |
 | 2026-07-16 | MobileSAM2 / HyperKD (2607.12297) | hypergraph で時間対応と多粒度を構造ごと転写する動画 FM 蒸留 | [brief](../briefs/2026-07-16/2607.12297.md) |
@@ -65,6 +80,12 @@
 | 2026-07-02 | Vitality-Aware Compression (2607.00382) | 層 vitality で圧縮強度を配分(後段圧縮の着想) | [brief](../briefs/2026-07-02/2607.00382.md) |
 
 ## Open Questions
+- **うちの蒸留データの有害サンプル比率は何%か** — 19956 の gradient-alignment を per-sample に測るだけ。50% 近ければ
+  recipe を選別型に切り替える価値が確定(W30 推薦実験)。capacity gap が大きいほど gate の利得は開くか(CPDP)
+- SFT の利得回収率 (21051) は運転/planner の経験でも一桁%まで落ちるか。context distillation で何倍回収できるか
+- **solver/simulator 検証済み合成データ (20145) は運転の「実行可能性・衝突判定」でそのまま機能するか** —
+  検証強度(厳密/heuristic/無)を振ると SFT 後性能はどこで頭打ちになるか
+- hypernetwork による adapter 生成 (17467/19604) が個別 LoRA を上回る交差点はどこか。多機種展開のコスト構造を変えるか
 - **teacher は本当に要るか** — SEED (self) / Direct-OPD (差分) / SAKD (student 条件) は
   いずれも teacher への依存を減らす方向。capacity gap が大きい設定でどこまで teacher-free で届くか
 - 「学習の差分を蒸留する」(05394) は非言語 token 列(軌道生成)に移せるか。
