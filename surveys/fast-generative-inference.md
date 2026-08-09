@@ -1,5 +1,5 @@
 # Fast Generative Inference — 推論ステップを削る生成 — Living Survey
-最終更新: 2026-07-26
+最終更新: 2026-08-09
 
 > 新設 (2026-W29)。プランナー (P1) と world model (P3) の双方で「反復 denoising を捨てる」
 > 論文が独立に3本以上溜まり、既存2サーベイのどちらにも収まらなくなったため分離した。
@@ -7,8 +7,10 @@
 ## 一言でいうと
 軌道生成も world model も diffusion / flow matching で書けるようになった一方、車載では
 **NFE (Number of Function Evaluations; サンプリング時のネットワーク評価回数) がそのままレイテンシ予算**になる。
-この分野は「品質を保ったまま推論ステップを何段まで削れるか」を、学習し直さずに削る (schedule) /
-学習して削る (one-step drift) / そもそも生成を1回にする、の3系統で攻めている。
+削り方は4系統 — 学習し直さずに削る(schedule)/ 学習して削る(one-step drift)/ 生成を1回にする / そして
+**2026-W32 で加わった「そもそも生成を完走しない」**(深さ方向の early exit + 出力段の除去)。
+最後の系統が示したのは、**削る軸は反復回数(時間方向)だけでなくネットワークの深さ方向にもある**こと、そして
+**下流タスクが要求する情報は生成の完成品よりずっと手前にある**こと。
 削ると失うのは多様性・多峰性であり、**どこまで削ってよいかは下流タスクが決める**のが共通の教訓。
 
 ## 系譜マップ
@@ -24,6 +26,17 @@
     単一 forward で未来フレーム生成。diffusion 比 **平均17倍高速・30+fps**
   - **RynnWorld-4D (06559)** — denoising を回さず 1-forward で行動を出す(4D 予測系からの流入)
   - **ABot-World-0 / ODE distillation (19191)** — 多step の拡散/フロー生成を **少step に蒸留**しつつ、**LongForcing** で長 self-rollout の distribution shift を抑える。few-step 化と long-horizon drift 対策を同時に解く(vla-world-model と相互参照)
+- **そもそも生成を完走しない(2026-W32 新設)— 時間方向でなく深さ方向に削り、出力段を捨てる**
+  - **Adaptive-WAM (06008, P3→P1)** — video diffusion planner を制御実験で解剖したところ、
+    **denoising timestep(時間方向)には性能がほぼ鈍感**で、効くのは **DiT の深さ**、しかも最終層は不要で
+    **中間層 hidden state から既に良い軌道がデコードできる**。そこで複数ブロックに trajectory diffusion head を付け、
+    軽量 **trajectory-quality scorer** が閾値を超えたら即打ち切り(超えなければキャッシュから続行)。
+    deploy 時は **CFG の反復 denoising ループも VAE decode も実行しない** — どちらも未来動画の合成にしか要らないため。
+    NAVSIM **90.8 PDMS**(固定 exit + 64 proposal で 92.6)/ **平均 170ms**(full-depth 320ms 比 47% 減)、
+    target domain の fine-tuning なしで nuScenes 転移。**「world model を生成器でなく特徴抽出器として使う」**割り切り
+  - 他系統との違い: VSFM / DRIFT / DriftWorld はいずれも **生成を最後まで走らせた上で**回数を削る。
+    こちらは**下流タスクに必要な情報が生成の途中にある**という前提に立ち、完成品を作らない。
+    **シーン難易度に応じて深さを動的配分**する点も他にない軸(vla-world-model サーベイと相互参照)
 - **削った先に何が開くか**(速さが機能を生む)
   - 推論時 **action search** が実用域に入る (15065): 1制御周期あたり評価できる候補軌道の本数が桁で増える
   - **オフライン代理評価器**になる (15065): rollout スコアが ground truth と最大 **0.99 相関**
@@ -41,6 +54,7 @@
 ## 重要論文リスト
 | 日付 | 論文 | 一言 | brief |
 |---|---|---|---|
+| 2026-08-08 | Adaptive-WAM (2608.06008) | 深さ方向の early exit + denoising/VAE decode の除去。生成を完走せず中間層から軌道を読む。90.8 PDMS / 170ms | [brief](../briefs/2026-08-08/2608.06008v1.md) |
 | 2026-07-25 | BiCompoDiff (2607.21341) | 制約を微分可能 energy 化し拡散逆過程に勾配注入、制約別に破れを分解 | [brief](../briefs/2026-07-25/2607.21341v1.md) |
 | 2026-07-23 | ABot-World-0 (2607.19191) | ODE distillation で少step 化 + LongForcing で long-horizon drift 抑制 | [brief](../briefs/2026-07-23/2607.19191.md) |
 | 2026-07-18 | DriftWorld (2607.15065) | 一発生成の action-conditioned world model、17倍高速・rollout 評価 0.99 相関 | [brief](../briefs/2026-07-18/2607.15065.md) |
@@ -52,6 +66,14 @@
 | 2026-07-09 | RynnWorld-4D (2607.06559) | 4D 予測 + 1-forward で行動を出す | [brief](../briefs/2026-07-09/2607.06559.md) |
 
 ## Open Questions
+- **削る軸は「反復回数」と「深さ」のどちらが効率的か** — 06008 は timestep に鈍感で深さに敏感だと報告したが、
+  これは planning が粗い情報しか使っていないからか、**NAVSIM が粗い判断しか要求していない**からか。
+  合流・遮蔽・カットインのサブセットで感度が復活しないかを見れば切り分けられる
+- **早期 exit の安全性を保証付きで言えるか** — trajectory-quality score を非適合度スコアとして calibration し
+  「早期 exit した軌道の失敗率 ≤ α」を conformal で主張できるか(06008)。ただし **exit 位置が入力依存で変わる時点で
+  交換可能性 (exchangeability) が壊れていないか**が論点。ここが解ければ R1 との接続点になる
+- **scorer と exit head が同じ hidden state を共有する自己都合バイアス**はないか — 浅い exit の軌道を
+  scorer が高く評価してしまう構造的な危険。早期 exit が誤った時の失敗分布を見る必要がある(06008)
 - **NFE を横軸にした品質カーブは手法ごとにどう違う形をするか** — 「低 NFE で崩れる点」が
   手法選定の実質的な判断材料になるはずだが、統一プロトコルでの比較がまだない(W29 出力キューの中心仮説)
 - 推論時 τ-schedule 変更 (11442) は、画像生成でなく**軌道生成**でも同じ利得を出すか。

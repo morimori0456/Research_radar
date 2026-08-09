@@ -1,17 +1,33 @@
 # VLA / World Model / E2E Driving — Living Survey
-最終更新: 2026-07-26
+最終更新: 2026-08-09
 
 ## 一言でいうと
 言語・視覚・行動を1つのモデルで扱う **VLA (Vision-Language-Action)** と、世界の遷移を予測する
 **world model** を end-to-end 自動運転にどう接続するかを追う分野。統合の設計空間はほぼ埋まり、論点は
-「どう繋ぐか」から **「世界状態をどう保持し、どこで grounding するか」** に降りてきた:
-(1) 予測ターゲットは **pixel か latent か**(pixel は細かいがノイズ弱・latent は頑健だが劣化 → pre-train で
-pixel 接地し実運用は latent 専用)、(2) 状態は **観測履歴か明示 register か**、action head は **単一か MoE か**、
-(3) 行動ラベルなし監督(latent action / flow / self-play)と長文脈のコスト配分(fast weights vs replay)。
-横断の教訓として continual では **world model は覚え actor だけ忘れる**(成分別に忘却対策を配れ)。
-(1)(2) は車載レイテンシ・頑健性予算に直結する(R3)。
+「どう繋ぐか」→「世界状態をどう保持し、どこで grounding するか」→ さらに **「そもそも未来を *描く* 必要があるのか」**
+へ降りた: **描画は推論から落とせる**(中間層から軌道が読め、denoising 反復にも鈍感)、**描画を目的にすると
+見た目のショートカットを学ぶ**、**その結果できたモデルは物理でなく見た目で汎化する**。処方は
+**状態(物理)の枝と描画(見た目)の枝を構造的に分離し、運用では前者だけ走らせる**こと。
+残る論点は状態の持ち方(latent / 明示 register / MoE head)と、行動ラベルなし監督のスケール — いずれも
+車載レイテンシ・頑健性予算に直結する(R3)。
 
 ## 系譜マップ
+- **未来を「描く」必要はあるのか(2026-W32 の芯)— 診断 → 処方 → 運用が3本で閉じた**
+  - **運用: 描画を推論から落とす** … **Adaptive-WAM (06008)** — video diffusion planner から **反復 denoising ループも
+    VAE decode も deploy 時に除去**。性能は **denoising timestep に鈍感**、効くのは DiT の深さだが最終層は不要で
+    **中間層 hidden state から良い軌道が読める**。複数ブロックに trajectory head を付け軽量 scorer で早期 exit。
+    NAVSIM **90.8 PDMS / 平均 170ms**、fine-tuning なしで nuScenes 転移。「world model = 生成器ではなく特徴抽出器」
+  - **処方: 描画を目的にした時の汚染を封じる** … **LAWM-3D (05706)** — multi-view を LAM に食わせても 3D 理解は
+    出ない(明示的な negative result)。原因は **未来フレームの appearance leakage** とカメラ間の見た目差。
+    処方3点セット = 視点不変な行動 tokenization / 中間特徴を **3D foundation model にアンカー**(軽い部分蒸留)/
+    **non-injective な RGB-D 同時再構成**で覗き見を封じる。人間動画 pretrain → ロボット fine-tuning
+  - **診断: できたモデルは何で汎化しているのか** … **XEWorld (05799)** — シーン・物理を固定し **機体だけ held-out** に
+    する統制テストベッド。汎化を決めるのは **kinematic 類似度ではなく visual similarity** で、現行 world model は
+    本質的に **2D 視覚パターンマッチャ**。数値 joint action を一貫した視覚運動に翻訳できず、zero-shot には
+    **pixel-space action + 明示的時空間 alignment** が必須。few-shot 適合は既知機体の catastrophic forgetting を招く
+  - 系譜の接続: この3本は **HyWorldVLA (20988)**(pre-train で pixel 接地 → 運用は latent 専用)を**層方向**に、
+    **WorldWeaver (21594)**(状態推論と描画を別重みに分ける MoT)を**構造方向**に延長したもの。
+    5本で「状態の枝 / 描画の枝の分離」という設計方針が固まった
 - 統合方式(world model の恩恵をどう受けるか)— R3 分類マップの本体
   - (a) 単一 backbone co-training + 推論時脱着: **UNIVERSE (05133)** — 単一 DiT で video+action、visibility mask で未来漏れ遮断、推論 4.3x 高速・zero-shot 転移
   - (b) 行動表現の座標系を変える: **PixelPilot (04637)** — 画像平面 2D 再定式化で異種データ混合スケール + ego-status 近道学習対策
@@ -57,6 +73,9 @@ pixel 接地し実運用は latent 専用)、(2) 状態は **観測履歴か明�
 ## 重要論文リスト
 | 日付 | 論文 | 一言 | brief |
 |---|---|---|---|
+| 2026-08-08 | Adaptive-WAM (2608.06008) | video diffusion の中間層から軌道を early exit、denoising 反復と VAE decode を推論から除去。NAVSIM 90.8 PDMS / 170ms | [brief](../briefs/2026-08-08/2608.06008v1.md) |
+| 2026-08-08 | LAWM-3D (2608.05706) | multi-view だけでは 3D 理解は出ない(negative result)。幾何アンカー + 非単射 RGB-D で appearance leakage を封じる | [brief](../briefs/2026-08-08/2608.05706v1.md) |
+| 2026-08-08 | XEWorld (2608.05799) | 未見機体の統制評価で「world model は 2D 視覚パターンマッチャ」と診断、few-shot 適合は忘却を招く | [brief](../briefs/2026-08-08/2608.05799v1.md) |
 | 2026-07-25 | HyWorldVLA (2607.20988) | pixel+latent hybrid world-VLA、pre-train で pixel 接地し実運用は latent 専用、NAVSIM v1/v2 超え | [brief](../briefs/2026-07-25/2607.20988v1.md) |
 | 2026-07-25 | WorldWeaver (2607.21594) | world state registers + MoT で multi-agent/view の共有状態を保持 | [brief](../briefs/2026-07-25/2607.21594v1.md) |
 | 2026-07-25 | MoE VLA (2607.20771) | MoE action head で原始技能が expert に創発分離、router 再学習で few-shot 適合 | [brief](../briefs/2026-07-25/2607.20771v1.md) |
@@ -90,6 +109,16 @@ pixel 接地し実運用は latent 専用)、(2) 状態は **観測履歴か明�
 | 2026-07-04 | DriveTeach-VLA (2607.01658) | 知覚蒸留+軌道誘導で空間接地を注入、NAVSIM/nuScenes SOTA | [brief](../briefs/2026-07-04/2607.01658.md) |
 
 ## Open Questions
+- **生成 pretraining の寄与はどこまで本質か** — Adaptive-WAM (06008) が推論で生成を一切回さないなら、同じ backbone を
+  最初から軌道予測だけで学習したものと差が出るのか。差が小さければ「world model は要らず大きい video encoder で足りる」
+  ことになり **R3 の前提そのものが変わる**(W32 精読の問い3)
+- **「denoising timestep に鈍感」は planner が粗いのか、ベンチが粗いのか** — 合流・遮蔽・カットインのサブセットだけで
+  感度が復活しないか。飽和する層の深さがシーン難易度で動くなら adaptive exit の根拠が強まる(06008)
+- **我々のモデルも「見た目で汎化」しているか** — 同一シーンで (a) 車体の見た目だけ / (b) 幾何(ホイールベース・カメラ位置)
+  だけを変えた条件の予測誤差を比較すれば XEWorld (05799) の診断がそのまま自社に移る。**車種・センサ構成の変更は
+  我々にとっての「未見 embodiment」**
+- **appearance leakage は運転動画でも起きているか** — 未来フレームを入力から遮断する ablation で性能低下が小さければ
+  「見た目を覗いていた」証拠(05706)。非単射 RGB-D 再構成の導入価値がその場で確定する
 - **世界状態の default 構成は「latent 中心 + 明示 state register + MoE action head」でいいか** — HyWorldVLA(pixel 接地→latent)
   ・WorldWeaver(register)・MoE VLA(MoE head)を運転で1つに束ねた時、どの組合せが車載レイテンシ/頑健性で残るか
 - pixel grounding (20988) が noisy 側でだけ効くのは「頑健性」か「OOD 汎化」か。pixel を切る schedule に最適点はあるか
