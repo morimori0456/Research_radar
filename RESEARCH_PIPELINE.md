@@ -2,31 +2,50 @@
 
 > Phase 1 の目標「トップカンファ主著1本」を管理する。monthly レビューが更新し、
 > 締切から逆算して「今月やるべきこと」を突きつける。
+> 最終更新: 2026-09-01 (monthly/2026-09)
 
 ## 締切カレンダー (毎月確認・更新すること)
 
-| 会議 | 例年の締切 | 分野適合 |
-|---|---|---|
-| CVPR | 11月中旬 | vision / VLA / 蒸留 |
-| ICRA | 9月中旬 | planning / 評価 / ロボティクス |
-| IROS | 3月上旬 | 同上 |
-| NeurIPS | 5月中旬 | ML全般 / 蒸留 / world model |
-| CoRL | 6月上旬 | ロボット学習 / VLA / E2E |
-| ICCV/ECCV | 3月上旬 (隔年) | vision |
+| 会議 | 締切 | 確度 | 分野適合 |
+|---|---|---|---|
+| **ICRA 2027** (Seoul) | **2026-09-15 23:59 PST** | 公式 (**AoE ではない点に注意**) | planning / 評価 / ロボティクス |
+| **World Models in Physical AI** @ NeurIPS 2026 (workshop) | **2026-09-05 AoE** | 公式・**non-archival**・8p | world model / evaluation |
+| **RoboPAD** @ NeurIPS 2026 (workshop) | **2026-09-10 AoE** | 公式・**non-archival**・4–9p・open-problem/benchmark/perspective 歓迎 | world model / evaluation & safety |
+| CoRL 2026 workshop **提案** | 2026-09-11 | 公式 (論文ではなく提案) | — |
+| **CVPR 2027** | **2026-11-13 AoE** (abstract 11-07) | **推定** — 2026-09 時点で公式 CFP 未発表 | vision / VLA / 蒸留 |
+| NeurIPS 2027 | 2027-05 中旬 | 例年 | ML全般 / 蒸留 / world model |
+| CoRL 2027 | 2027-06 上旬 | 例年 | ロボット学習 / VLA / E2E |
+| IROS 2027 / ICCV 2027 | 2027-03 上旬 | 例年 | planning / vision |
+| NAVSIM leaderboard | **常時開放ではない** (challenge window 制) | 次の窓は 2027 春の見込み | 評価 |
 
 ## アイデア在庫
 
 | ID | アイデア | 由来 | 状態 | 次のアクション |
 |---|---|---|---|---|
-| R1 | HIL評価 × conformal 安全指標 (衝突率だけでなく過保守・介入頻度を保証付きで測る) | P1 + radar (CommonRoad-Game, conformal距離場) | 種 | 既存評価指標のサーベイと新規性の確認 |
-| R2 | 蒸留の capacity gap 系統則 (teacher/student比と破綻境界のスケーリング) | P2 + ML_report蒸留シリーズ | 種 | 小規模で予備実験、法則が見えるか |
-| R3 | VLA × world model 統合アーキテクチャ | P3 + radar (DriveTeach-VLA, Orca) | 調査中 | 既存統合手法の分類マップ作成 |
+| **R1** | **閉ループ評価に「衝突率の隣に置く量」を定義する** — solvability (逃げ道の残り本数) / mode coverage (逃げ道の種類数) / 抜け穴監査 (分母の健全性)、および conformal を被せられる範囲の切り分け | P1 + W34/W35 (RoG-DAgger, Anytime GTMP, PDPO, PAWBench, VBVR-Pro, Danger Law) | **調査中** (2026-09 に 種→調査中) | **走行ログ or 2D toy に solvability を後付け計算し、図1を出す (半日)。09-06 が gate** |
+| R2 | 蒸留の破綻境界 — 説明候補は ① CLL 集中度 (UC-MOPD) ② clipping で切り捨てられる推論 token (Echo-GRPO)。**2本は治療方向が正反対なので対照群として並べられる** | P2 + ML_report 蒸留7本 | **調査中** (2026-09 に 種→調査中。**容量比1.0でも蒸留が効く反例5本で「容量差が原因」という当初の前提は棄却**) | 過去の蒸留ログに CLL を後付けし、上位1%占有率が容量比とともに単調に動くか |
+| R3 | VLA × world model 統合アーキテクチャ | P3 + W35 | 調査中 (**分類マップの軸が3本確定**: ① 時間をどこに持つか ② 未来を1本返すか分布か ③ 終点か過程か・自己訂正するか) | 分類マップ本体の作成。**ただし今月は着手しない** (R1 に絞る) |
 
 状態: 種 → 調査中 → 予備実験 → 本実験 → 執筆 → 投稿
 
+> **新しい種を立てない方針 (2026-09)**: W35 の課題カード「学習方策の recall を誰も検証できない (OTA を配った時点で完了になっている)」は
+> 独立した種に見えるが、**必要な物差しは R1 と同一** (差分を測る量) であるため、R1 の応用例として畳む。
+> LIFE_PLAN の「論文ターゲットを同時に2本以上追うこと」を避ける。
+
 ## 今のターゲット
 
-未定。次の quarterly で R1–R3 から1本に絞る (全部追うと全部落ちる)。
+**R1 / CVPR 2027 (2026-11-13 推定)。**
+
+**ICRA 2027 (09-15) は見送りを確定。** 自分で測った数字がゼロの状態から14日で archival 主著は成立しない。
+**追わないことを明記して迷いを消す。**
+
+**逆算**
+| 時期 | やること | 判定 |
+|---|---|---|
+| 2026-09 | 指標の定義確定と toy 実証 (`solvability / mode coverage / 抜け穴` notebook = ML_report 公開物と同一物) | **09-06: 図1が無ければ RoboPAD 投稿を取り下げ、OSS PR に切り替え** |
+| 2026-09-10 | **RoboPAD @ NeurIPS 2026 に 5ページ投稿 (non-archival)** — 査読コメントという外部信号を取りに行く。non-archival なので CVPR 2027 の権利は残る | 投稿の有無 |
+| 2026-10 | 公開データ (nuPlan / NAVSIM ログ) で本実験。**指標が実データで planner の順位を入れ替えるか** | **10月中に実データに載らなければ CVPR も落ちる** |
+| 2026-11 上旬 | 執筆 (abstract 11-07 / 本文 11-13) | — |
 
 ## 投稿履歴
 
