@@ -1,14 +1,21 @@
 # Foundation Model Distillation & Adaptation — Living Survey
-最終更新: 2026-09-27
+最終更新: 2026-10-04
 
 ## 一言でいうと
-大きな基盤モデルの能力を**小さく・低メモリ・ローカル実行可能**な形に移し、他ドメイン・他機種へ適合させる方法を追う分野。
-論点は「どう縮めるか」→「何で教えるか」→ 前提の崩壊 (W33) → step length と適合の4層 (W34) → 支配変数は loss の外側 (W35) → 監督を当てる範囲 (W36) → **サンプルは等価ではない = data selection** (W37) と降りた。適合の評価軸は「同じ適合精度のときにどれだけ忘れたか」。
-**2026-W39 で、on-policy distillation (OPD; student 自身の生成文に teacher が token ごとに採点を付ける蒸留) の破綻の原因が、「モデルの性質」より手前の配管で見つかった:** teacher と student が別の EOS に「止まれ」の確率を置く (設定上の停止集合は同一なので気づけない) / 複数 teacher の logit 平均は確率の幾何平均になり、少数派の答えを消す。**どちらも再学習なしで検査できるので、R2 の説明候補を測る前に交絡として潰す。**
-**teacher の作り方にも軸が 1 本増えた: 大きくするのではなく、同じモデルに未来 (正解) を見せる** (privileged information distillation)。
-**測る時点は 3 つになった: 蒸留の最中に何が壊れるか / 蒸留直後 / 後段の学習の後** —— 蒸留直後の精度では後段 (RL) の伸びを予測できない、という報告が出た (ブリーフ外 `2609.28145`)。
+大きな基盤モデルの能力を**小さく・低メモリ・ローカル実行可能**な形に移し、他ドメイン・他機種へ適合させる方法を追う分野。論点は「どう縮めるか」→「何で教えるか」→ 前提の崩壊 (W33) → step length と適合の 4 層 (W34) → 支配変数は loss の外側 (W35) → 監督を当てる範囲 (W36) → data selection (W37) → 配管の交絡 (W39) と降りてきた。適合の評価軸は「同じ適合精度のときにどれだけ忘れたか」。
+**2026-W40 で、OPD (on-policy distillation; student 自身の生成物の上で teacher に合わせる蒸留) の recipe の優先順位が見えた: 先に決めるのは KL の向き (性能) と学習率 (忘却) で、on-policy かどうかは後。**teacher の大きさより相性が効き、相性は前段 (warm-up SFT・先の RL) で変わる。target の取り方も logit → 系列の結果 → **表現の「方向」**(base→teacher の差を外挿) に広がった。
+**適合の側は「backbone を凍結し、小さな部分を目的の場面に絞った少量データで合わせる」が 3 本 (Truck VLA / PAGER / OTT3R) で揃った** —— 65 倍の一般データと同等、全体の fine-tuning より転移に強い。
 
 ## 系譜マップ
+- **★ OPD の recipe は「何を先に決めるか」の順序問題になった / 適合は凍結 + 小さな部分 + 絞ったデータ(2026-W40 の芯)**
+  - **先に決める 2 変数** — [On/Off-Policy](../briefs/2026-09-30/2609.35259.md): 性能を決めるのは KL の向き (forward なら生成者に依らず安定)、忘却を決めるのは学習率。**off-policy で足りれば rollout の計算が丸ごと消える。**W36〜W39 の「on-policy + 監督の範囲」の読みは、この 2 変数を揃えた後の話になる
+  - **段の順序と相性** — [SFT·RLVR·OPD](../briefs/2026-10-01/2609.31900.md): 9 組の teacher-student で、効くのは teacher の大きさでなく相性。**先に RL で強くした student は蒸留で下がる。**warm-up SFT + teacher の適合で 29.2% → 43.8%。capacity gap を「teacher を小さくする」以外で解く
+  - **どこに当てるか / どれだけ強く当てるか** — [OG-OPD](../briefs/2026-09-30/2609.35319.md): 差が大きいターンではなく、最終的な成否に効いたターンに寄せる。[DN-MOPD](../briefs/2026-09-30/2609.35347.md): 複数 teacher の信号の大きさが不揃いだと 1 分野が独占する。**固定重みでもほぼ同等 = 分野別の loss 分散を 1 回測るだけで足りる可能性**
+  - **target を「点」から「方向」へ** — [RIDE](../briefs/2026-10-04/2609.36484.md): RL 前の base と RL 後の teacher の hidden state の差を、student で少し先まで外挿する。logit 上の外挿は最終層で縮みノイズを増幅する。**fine-tuning で teacher を作る P2 では base も teacher も手元にあるので、そのまま試せる。**teacher の変化が小さいと logit 外挿は逆効果
+  - **系列全体の KL を分解** — [DriftOPD](../briefs/2026-10-03/2610.00317.md): sequence-level reverse-KL = 各 chunk の模倣 + 将来への影響 (offline Q で推定)。1 ステップの VLA 方策への蒸留。運転では「数秒後に危険になるか」の項に移る
+  - **拡散・flow の大→小** — [GFD-OPD](../briefs/2026-10-02/2609.39692.md): CFG が student の誤差を増幅していた。teacher の guided 出力を CFG なしの student に直接合わせる。flow-matching の action head を小型化するときの最初の確認項目
+  - **適合: 凍結 + 小さな部分 + 絞ったデータ** — [Truck VLA](../briefs/2026-10-02/2609.38570.md): Alpamayo 1.5 の backbone を凍結し action 生成部だけ → さらに凍結して生成ステップごとの残差補正。実トラック 229 場面で誤差半減、目的の場面に絞ると 65 倍の一般データと同等 (open-loop のみ・test 26 場面)。[PAGER](../briefs/2026-10-03/2610.01589.md): 凍結した点群 encoder に adapter だけで部分観測を合わせる (72 → 2.6 mIoU の崩れを回復)。全体の fine-tuning より別データセットへの転移で強い (53.9 vs 48.1)。[OTT3R](../briefs/2026-10-01/2609.36374.md): 3D 基盤モデルを 1/10 に蒸留し、計算量 0.2% で特定ドメインに特化する 2 段 recipe (コード付き)
+  - **周辺** — [FuseReg](../briefs/2026-09-29/2609.31620.md): feature 蒸留で合わせる teacher の層をランダムな部分集合の平均にすれば、層の決め打ちが要らない。[CrossFit](../briefs/2026-10-04/2609.39102.md): pseudo-label のループはラベルを付けるデータと検証するデータを分けないと、誤りに合意して内部指標だけが伸びる
 - **★ 破綻は配管にある —— OPD の失敗を「モデルの性質」と呼ぶ前に潰す交絡(2026-W39 の芯)**
   - **EOS mismatch ([2609.20511](../briefs/2026-09-21/2609.20511.md))** — length inflation の原因の 1 つ。teacher と student は機能的に等価な別々の EOS に質量を置く。**OPD の勾配は student の EOS を押し下げるが、teacher の EOS を持ち上げない → どの EOS にも質量が乗らず止まらない。**デコード側の停止集合を揃えても効かない。等価 EOS の質量を合算してから目標を計算すると効く (Qwen3 / Llama / Gemma)。**後半に残る別種の inflation が R2 ①② の本当の測定対象。**過去ログで GPU 0 で検査できる
   - **teacher の平均の取り方 ([Linear Superposition](../briefs/2026-09-27/2609.29845.md))** — `softmax(mean(logits))` は確率の幾何平均になり、1 つの teacher だけが推す mode を消す。`mean(softmax(logits))` なら残る。**multi-modal な軌跡予測の multi-teacher 蒸留で既定値を決める根拠。**副産物: 混ぜた入力への self-distillation は単独入力の性能を大きく落とした (PPL 12.4 → 65.5)。mixup-KD では単独入力の指標を別に取る
@@ -445,6 +452,18 @@
 ## 重要論文リスト
 | 日付 | 論文 | 一言 | brief |
 |---|---|---|---|
+| 2026-10-04 | **RIDE (2609.36484)** | **teacher を目標点でなく「base→teacher の方向」として表現上で外挿。平均で teacher を超えた唯一の手法。keyword 全滅の 2 例目** | [brief](../briefs/2026-10-04/2609.36484.md) |
+| 2026-10-04 | CrossFit (2609.39102) | pseudo-label ループの co-cheating を交差採点で半減。自動ラベリングの点検項目 | [brief](../briefs/2026-10-04/2609.39102.md) |
+| 2026-10-03 | DriftOPD (2610.00317) | 系列 reverse-KL = chunk 模倣 + 将来への影響 (offline Q)。1 ステップ VLA 方策への蒸留 | [brief](../briefs/2026-10-03/2610.00317.md) |
+| 2026-10-03 | PAGER (2610.01589) | 凍結 encoder + adapter で部分観測を全体の特徴に合わせる。全体 FT より転移に強い | [brief](../briefs/2026-10-03/2610.01589.md) |
+| 2026-10-02 | **Truck VLA (2609.38570)** | **backbone 凍結 → 生成部 → 残差補正の 2 段。目的の場面 229 本で 65 倍の一般データと同等 (open-loop のみ)** | [brief](../briefs/2026-10-02/2609.38570.md) |
+| 2026-10-02 | GFD-OPD (2609.39692) | 拡散の大→小蒸留で CFG が誤差を増幅。guided 出力を CFG なし student に直接合わせる | [brief](../briefs/2026-10-02/2609.39692.md) |
+| 2026-10-01 | **SFT·RLVR·OPD (2609.31900)** | **効くのは teacher の大きさでなく相性。先に RL した student は蒸留で下がる。warm-up + teacher 適合で 29.2→43.8%** | [brief](../briefs/2026-10-01/2609.31900.md) |
+| 2026-10-01 | OTT3R (2609.36374) | 3D 基盤モデルを 1/10 に蒸留 → 計算 0.2% でドメイン特化。適合予算の基準 | [brief](../briefs/2026-10-01/2609.36374.md) |
+| 2026-09-30 | **On/Off-Policy (2609.35259)** | **性能は KL の向き、忘却は学習率で決まる。on-policy かどうかは二次的 = off-policy で足りれば rollout が要らない** | [brief](../briefs/2026-09-30/2609.35259.md) |
+| 2026-09-30 | DN-MOPD (2609.35347) | multi-teacher OPD で信号の大きさを分野ごとに正規化。固定重みでもほぼ同等 | [brief](../briefs/2026-09-30/2609.35347.md) |
+| 2026-09-30 | OG-OPD (2609.35319) | 差の大きいターンでなく成否に効いたターンに teacher の指導を寄せる | [brief](../briefs/2026-09-30/2609.35319.md) |
+| 2026-09-29 | FuseReg (2609.31620) | 層融合をランダム部分集合で正則化。feature 蒸留の目標層の決め打ちを外す | [brief](../briefs/2026-09-29/2609.31620.md) |
 | 2026-09-27 | Linear Superposition (2609.29845) | logit 平均 = 確率の幾何平均で、少数派の答えが消える。multi-teacher の目標は確率の平均で作るかを先に決める | [brief](../briefs/2026-09-27/2609.29845.md) |
 | 2026-09-26 | Taste-Bench (2609.25804) | 同じモデルの teacher にだけ正解を見せる privileged information distillation。LoRA r16・forward KL・A100 2h の具体 recipe | [brief](../briefs/2026-09-26/2609.25804.md) |
 | 2026-09-21 | **EOS mismatch (2609.20511)** | **OPD の length inflation は停止トークンの食い違いが一因。デコード側で揃えても効かず、等価 EOS の質量合算で効く。R2 の交絡として過去ログで検査可** | [brief](../briefs/2026-09-21/2609.20511.md) |
@@ -534,6 +553,8 @@
 | 2026-07-02 | Vitality-Aware Compression (2607.00382) | 層 vitality で圧縮強度を配分(後段圧縮の着想) | [brief](../briefs/2026-07-02/2607.00382.md) |
 
 ## Open Questions
+- **★ R2 の過去の蒸留ログで、KL の向きと学習率を揃えると on-policy の利得はどれだけ残るか**(35259 × 31900)— 残らなければ、R2 の説明候補 (CLL 集中度・clipping) を測る前に、比較条件そのものを揃え直す必要がある
+- **★ 「base→teacher の方向」の外挿は、視覚の fine-tuning で作った teacher にも効くか**(36484)— hidden state の幅が違う student では射影の扱いが鍵。2D toy なら CPU で数分
 - **★ 手元の fine-tuning / 蒸留データのうち、モデルが既に正解している例は何割か**(09999)— **学習を1回も回さずに、data selection 系の手法の上限がこれ一つで決まる。**8割なら本命・2割以下なら以降追わない。**推論のみ・30分。W37 時点で P2 の最も安い未着手項目**
 - **★ ① CLL 集中度 と ② clipping の切り捨て は、対立仮説ではなく同じ1本のダイヤルの両端か**(08337)—
   **判定は追加学習なし: 過去ログ7本に CLL 集中度・routing fidelity・background leakage を後付けし、1枚の散布図に載せる。点が1本の曲線に乗れば「両端」が正しい。**狙いは相関の有無であって性能改善ではない
