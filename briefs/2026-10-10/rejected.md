@@ -1,0 +1,61 @@
+# Rejected 2026-10-10
+
+- 2610.11771: PathTime-VLA: Path-Time Decoupling for Factorized Post-Training of Vision-Language-Action Policies — manipulation VLA の後処理で、運転 planner への転用が遠い
+- 2610.11591: Acting from Belief, Looking When Needed: A Bayesian Spatial World Model for Navigation under Intermittent Perception — 屋内 navigation の belief 型 world model。運転との距離が大きい
+- 2610.11583: SDPAD: A Fully Spike-Driven Pipeline for End-to-End Autonomous Driving — SNN による energy 削減が主題で、P1/P3 の知見としては deployment 寄り。planner 構造の学びが薄い (次点)
+- 2610.12444: Rounding in Preconditioner Space: Redesigning 4-bit AdamW Optimizer-State Quantization — optimizer state 量子化。P2 の蒸留/適合に直接効かない
+- 2610.12442: LEGO: A Lifting-Free Approach for Exocentric-to-Egocentric Video Generation — 蒸留/PEFT/適合の recipe に当たらない (一般的な LLM・視覚タスク、または別分野)
+- 2610.12435: VioLA: Learning Generalist Humanoid Control Policies from Human Data — 蒸留/PEFT/適合の recipe に当たらない (一般的な LLM・視覚タスク、または別分野)
+- 2610.12428: Toward Joint Optimization of Circuit Depth and Training Data Size in Adaptively Grown Quantum Classifiers — 蒸留/PEFT/適合の recipe に当たらない (一般的な LLM・視覚タスク、または別分野)
+- 2610.12410: Predicting Alignment Generalization with Value Representations — 蒸留/PEFT/適合の recipe に当たらない (一般的な LLM・視覚タスク、または別分野)
+- 2610.12402: SpaceCast-Bench: Evaluating Predictive Spatial Reasoning in Vision-Language Models — 蒸留/PEFT/適合の recipe に当たらない (一般的な LLM・視覚タスク、または別分野)
+- 2610.12401: Learning Kilometer-Scale Weather Prediction with Global-Regional Alignment — 蒸留/PEFT/適合の recipe に当たらない (一般的な LLM・視覚タスク、または別分野)
+- 2610.12325: Prior or Feedback? What an LLM Uses When Adapting Neural Operators — 蒸留/PEFT/適合の recipe に当たらない (一般的な LLM・視覚タスク、または別分野)
+- 2610.12316: Controllable Exaggeration for Generative Motion Models via Training-Time Adaptation and Inference-Time Guidance — 蒸留/PEFT/適合の recipe に当たらない (一般的な LLM・視覚タスク、または別分野)
+- 2610.12274: HarnessSQL: Harness-Native Training for SQL Agents in Realistic Database Environments — 蒸留/PEFT/適合の recipe に当たらない (一般的な LLM・視覚タスク、または別分野)
+- 2610.12248: EgoVoice: Proactive Spoken Assistance from Egocentric Multimodal Streams — 蒸留/PEFT/適合の recipe に当たらない (一般的な LLM・視覚タスク、または別分野)
+- 2610.12229: VibeEdit: Image Editing with Canvas Instructions — 蒸留/PEFT/適合の recipe に当たらない (一般的な LLM・視覚タスク、または別分野)
+- 2610.12190: DataSense-Bench: The First Step Toward an AI Scientist — 蒸留/PEFT/適合の recipe に当たらない (一般的な LLM・視覚タスク、または別分野)
+- 2610.12167: Is Real-World Training Data Necessary for Generalist Graph Anomaly Detection? — 蒸留/PEFT/適合の recipe に当たらない (一般的な LLM・視覚タスク、または別分野)
+- 2610.12126: SuperNav: An Agentic Navigation System for Any Task in Any Scene — 蒸留/PEFT/適合の recipe に当たらない (一般的な LLM・視覚タスク、または別分野)
+- 2610.12061: When Should Agents Think? Adaptive Reasoning via Cross-Turn Estimation — 蒸留/PEFT/適合の recipe に当たらない (一般的な LLM・視覚タスク、または別分野)
+- 2610.12048: Do Not Train Away Uncertainty: Early Uncertainty Anchored Calibration — calibration 改善で、fine-tuning 適合の recipe としては P2 の主軸から外れる (次点)
+- 2610.12030: Natural Language to First-Order Logic LLM-based Autoformalization — 蒸留/PEFT/適合の recipe に当たらない (一般的な LLM・視覚タスク、または別分野)
+- 2610.12016: CausalDreamer: Learning Predictive World Models with Latent Disentanglement — 蒸留/PEFT/適合の recipe に当たらない (一般的な LLM・視覚タスク、または別分野)
+- 2610.12005: Test-Time Compute for Tabular Foundation Models: Mechanisms, Gains, and Limits — 蒸留/PEFT/適合の recipe に当たらない (一般的な LLM・視覚タスク、または別分野)
+- 2610.11922: Project Greenhouse: Progress Toward Fully Open and Sovereign Agentic Search — 蒸留/PEFT/適合の recipe に当たらない (一般的な LLM・視覚タスク、または別分野)
+- 2610.11901: Can Decision Models Understand Stance? Evaluating Jev Against General-Purpose LLMs — 蒸留/PEFT/適合の recipe に当たらない (一般的な LLM・視覚タスク、または別分野)
+- 2610.11850: VEDJE: Video-Efficient Discriminative Joint Encoder for Scalable Video-Text Retrieval — 蒸留/PEFT/適合の recipe に当たらない (一般的な LLM・視覚タスク、または別分野)
+- 2610.11846: Open-Vocabulary Audio-Visual Event Localization via Complex-Valued Fusion — 蒸留/PEFT/適合の recipe に当たらない (一般的な LLM・視覚タスク、または別分野)
+- 2610.11845: Detecting Spin in Clinical Trials with Large Language Models — 蒸留/PEFT/適合の recipe に当たらない (一般的な LLM・視覚タスク、または別分野)
+- 2610.11818: From Pixels to Structure: Lightweight Vision-Language Models for Document OCR and Structured JSON Extraction — 蒸留/PEFT/適合の recipe に当たらない (一般的な LLM・視覚タスク、または別分野)
+- 2610.11810: Seek-and-View Reasoning for Multi-View Spatial Understanding — 蒸留/PEFT/適合の recipe に当たらない (一般的な LLM・視覚タスク、または別分野)
+- 2610.11790: Easy to anticipate, hard to compute: boundary dependence finds the computed outputs that entropy patching misses — 蒸留/PEFT/適合の recipe に当たらない (一般的な LLM・視覚タスク、または別分野)
+- 2610.11748: DEX: Digit-Level Early Exit for Energy-Efficient MSDF Neural Network Inference — 蒸留/PEFT/適合の recipe に当たらない (一般的な LLM・視覚タスク、または別分野)
+- 2610.12468: DreamTrue: Action-Faithful Robot World Model with Counterfactual Post-Training — robot 操作 world model の post-training。運転への転用が遠い
+- 2610.12464: What 30,000 Hours of Ego-centric Video Does Not Teach — ego-centric video の world model 評価。人間視点で運転との距離あり (次点)
+- 2610.12461: OuroWorld: Bringing Any 3D World Alive as Diverse, Endlessly Looping 3D Cinemagraphs — robot 操作・ゲーム・LLM agent 中心で、運転 world model/E2E への示唆が薄い、または quota 超過
+- 2610.12459: WorldGuide: Goal-Directed Video World Model for Procedural Task Execution — robot 操作・ゲーム・LLM agent 中心で、運転 world model/E2E への示唆が薄い、または quota 超過
+- 2610.12451: VersaCamVLA: Camera-Configurable VLA Policies for Robotic Manipulation — robot 操作・ゲーム・LLM agent 中心で、運転 world model/E2E への示唆が薄い、または quota 超過
+- 2610.12417: WOVEN: Weaving Visual World Modeling into Multimodal LLMs — robot 操作・ゲーム・LLM agent 中心で、運転 world model/E2E への示唆が薄い、または quota 超過
+- 2610.12412: WorldCast: Distributed Multiplayer World Models — robot 操作・ゲーム・LLM agent 中心で、運転 world model/E2E への示唆が薄い、または quota 超過
+- 2610.12407: LeWAM: A JEPA World Action Model with Diffusion-Steering-Based MPC — JEPA WAM。関連はあるが MiniWAM と重複 (次点)
+- 2610.12386: ARC: A Reasoning Recipe for Robot Foundation Models — robot 操作・ゲーム・LLM agent 中心で、運転 world model/E2E への示唆が薄い、または quota 超過
+- 2610.12369: Embodied Turing Machines: Stateful Code for Robot Recursive Self-Improvement — robot 操作・ゲーム・LLM agent 中心で、運転 world model/E2E への示唆が薄い、または quota 超過
+- 2610.12333: RiCo: Neural Simulation of Rigid-Body Interactions via Local Contact Reasoning — robot 操作・ゲーム・LLM agent 中心で、運転 world model/E2E への示唆が薄い、または quota 超過
+- 2610.12299: Multi-Agent Egocentric World Model with Fine-Grained Embodied Interaction — robot 操作・ゲーム・LLM agent 中心で、運転 world model/E2E への示唆が薄い、または quota 超過
+- 2610.12285: PLaW-VLA: Predictive Latent World Modeling for Vision-Language-Action Policies — VLA+latent world model で関連は強いが、MiniWAM と主題が重複し予測 target の設計は MiniWAM の方が明確 (次点)
+- 2610.12235: Language Models as AI Research World Models — robot 操作・ゲーム・LLM agent 中心で、運転 world model/E2E への示唆が薄い、または quota 超過
+- 2610.12231: Residual Modeling Closes the Regression and Generative Policy Gap in Robot Learning — robot 操作・ゲーム・LLM agent 中心で、運転 world model/E2E への示唆が薄い、または quota 超過
+- 2610.12185: RESETTLE: Robotic Recovery through Disagreement-Triggered Retrieval and Efficient Corrective Control — robot 操作・ゲーム・LLM agent 中心で、運転 world model/E2E への示唆が薄い、または quota 超過
+- 2610.12107: ContourVLA: A Closed-Loop Perception-Action Contour Policy for Generalized Referring Expression Segmentation — robot 操作・ゲーム・LLM agent 中心で、運転 world model/E2E への示唆が薄い、または quota 超過
+- 2610.12089: ManiUnit: A Manipulation Skill Dataset and Benchmark for Long-Horizon Tasks — robot 操作・ゲーム・LLM agent 中心で、運転 world model/E2E への示唆が薄い、または quota 超過
+- 2610.12026: Humanoid World Action Model With Joint State--Action Generation — robot 操作・ゲーム・LLM agent 中心で、運転 world model/E2E への示唆が薄い、または quota 超過
+- 2610.12007: REACT: Rolling Denoising and Dual Decoupling for Reactive Robot Control with VLA Models — VLA の chunked control の改善。reactive control は関連するが P3 quota 外 (次点)
+- 2610.11971: CAPABLE: Capability-Aware Policy Adaptation via Behavioral Latent Encoding — robot 操作・ゲーム・LLM agent 中心で、運転 world model/E2E への示唆が薄い、または quota 超過
+- 2610.11952: Tell Robot What Not to Do: A Negation Understanding Perspective — robot 操作・ゲーム・LLM agent 中心で、運転 world model/E2E への示唆が薄い、または quota 超過
+- 2610.11942: Right Screen, Wrong Transition: World Models as Verifiers for GUI Agents — robot 操作・ゲーム・LLM agent 中心で、運転 world model/E2E への示唆が薄い、または quota 超過
+- 2610.11794: Memento 3: Model-Based Recursive Self-Improvement through Reflective Rulebooks — robot 操作・ゲーム・LLM agent 中心で、運転 world model/E2E への示唆が薄い、または quota 超過
+- 2610.11723: MultiWorldBench: Do Independently Controlled Views Describe One Shared World? — robot 操作・ゲーム・LLM agent 中心で、運転 world model/E2E への示唆が薄い、または quota 超過
+- 2610.08448: Rethinking Cross-Tokenizer On-Policy Distillation: From Alignment Coverage to Supervision Reliability — 2026-10-08 に brief 済み (再来)
+- 2610.12374: AgentGarten: Code Worlds for Evolving Agents — agent 向け環境生成。分野外で学びの価値が薄く、wildcard 枠は P2 の SRD に使用
