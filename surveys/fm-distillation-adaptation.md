@@ -1,13 +1,24 @@
 # Foundation Model Distillation & Adaptation — Living Survey
-最終更新: 2026-10-04
+最終更新: 2026-10-11
 
 ## 一言でいうと
-大きな基盤モデルの能力を**小さく・低メモリ・ローカル実行可能**な形に移し、他ドメイン・他機種へ適合させる方法を追う分野。論点は「どう縮めるか」→「何で教えるか」→ 前提の崩壊 (W33) → step length と適合の 4 層 (W34) → 支配変数は loss の外側 (W35) → 監督を当てる範囲 (W36) → data selection (W37) → 配管の交絡 (W39) と降りてきた。適合の評価軸は「同じ適合精度のときにどれだけ忘れたか」。
-**2026-W40 で、OPD (on-policy distillation; student 自身の生成物の上で teacher に合わせる蒸留) の recipe の優先順位が見えた: 先に決めるのは KL の向き (性能) と学習率 (忘却) で、on-policy かどうかは後。**teacher の大きさより相性が効き、相性は前段 (warm-up SFT・先の RL) で変わる。target の取り方も logit → 系列の結果 → **表現の「方向」**(base→teacher の差を外挿) に広がった。
-**適合の側は「backbone を凍結し、小さな部分を目的の場面に絞った少量データで合わせる」が 3 本 (Truck VLA / PAGER / OTT3R) で揃った** —— 65 倍の一般データと同等、全体の fine-tuning より転移に強い。
+大きな基盤モデルの能力を**小さく・低メモリ・ローカル実行可能**な形に移し、他ドメイン・他機種へ適合させる方法を追う分野。論点は「どう縮めるか」→「何で教えるか」→ 前提の崩壊 (W33) → step length と適合の 4 層 (W34) → 支配変数は loss の外側 (W35) → 監督を当てる範囲 (W36) → data selection (W37) → 配管の交絡 (W39) → 先に決める変数 (W40) → **効く場所に絞る (W41)** と降りてきた。適合の評価軸は「同じ適合精度のときにどれだけ忘れたか」。
+**OPD (on-policy distillation; student 自身の生成物の上で teacher に合わせる蒸留) の recipe は、先に KL の向き (性能) と学習率 (忘却) を決め、on-policy かどうかは後 (W40)。**teacher の大きさより相性が効き、相性は前段 (warm-up SFT・先の RL) で変わる。
+**2026-W41 で共通の型が見えた: 全体に均一にかけず、効く場所に絞る。**監督は確実に対応する位置の top-16 語彙だけ (Cross-Tokenizer; 網羅率 100% にすると gradient が食い違って下がる)、介入は出力層の Adam epsilon だけ (Deafening Silence; 忘却 39.4〜67.9% 減)、データ予算は事前学習で弱い tail concept に寄せる (PASS)、rollout は teacher が信頼できる長さで打ち切る (Flash-OPD; コスト 1/2.2〜1/7.5)。**外部 teacher が要らない/先に適応させる**流れも出た (SRD・Juno)。
+**適合の側は「backbone を凍結し、小さな部分を目的の場面に絞った少量データで合わせる」が揃っている** (Truck VLA / PAGER / OTT3R に続き FUSEye: 約 22 万 parameter の 0 初期化 adapter、ラベル 25% で全ラベルの 97.6%)。
+
 
 ## 系譜マップ
-- **★ OPD の recipe は「何を先に決めるか」の順序問題になった / 適合は凍結 + 小さな部分 + 絞ったデータ(2026-W40 の芯)**
+- **★ 全体に均一にかけず、効く場所に絞る —— 監督・介入・予算・rollout(2026-W41 の芯)**
+  - **監督を絞る** — [Cross-Tokenizer OPD](../briefs/2026-10-08/2610.08448.md): tokenizer の異なる teacher-student で、strict 1:1 に対応する位置の top-16 共通語彙の reverse KL だけで、全語彙と同等の精度。対応の不確かな span を足すと、gradient の向きが strict と食い違って精度が落ちる。**補助 loss を足す前に gradient の cosine を見る。**LLM の推論・code タスクのみ
+  - **介入を絞る** — [Deafening Silence](../briefs/2026-10-09/2610.09835.md): 忘却は新データにほぼ出ない token の output embedding に集中する (Adam の正規化が一方向の勾配を全幅の更新に増幅)。出力 projection だけ epsilon を大きくして、安定な 7 設定で忘却 39.4〜67.9% 減。LoRA で released-head を学習すると忘却が 23 倍。**LLM のみ・視覚は未確認**
+  - **予算を絞る** — [PASS](../briefs/2026-10-10/2610.12345.md): SFT を long-tail の視点で見直す。事前学習で支持が弱い concept (prior barrier が高い) に instruction 予算を寄せる
+  - **rollout を絞る** — [Flash-OPD](../briefs/2026-10-07/2610.06105.md): 生成しながら teacher との不一致を数え、軌跡ごとに必要な所で打ち切る。コスト 2.2〜7.5 倍減。LLM 設定とみられる
+  - **teacher を足場から外す / 先に適応する** — [SRD](../briefs/2026-10-10/2610.08077.md): 結果を見た後の hindsight 付き出力を、結果を知らない自分へ蒸留 (外部 teacher なし)。全失敗 group が 98% の設定で成功率 0% → 60.6%。[Juno](../briefs/2026-10-09/2610.09940.md): JEPA の予測 latent を VLA の teacher にし、teacher を新ドメインで先に適応・凍結してから student を LoRA で合わせる
+  - **遅延で蒸留する** — [FastOPD](../briefs/2026-10-06/2610.02832.md): 大きな VLA を推論 2 ステップの student へ。教師の 84% の性能で遅延 78% 減 (操作タスク)。[SimForcing](../briefs/2026-10-07/2610.06598.md): sim 教師から motion の時間変化だけを蒸留し、見た目の gap を避ける
+  - **適合 (凍結 + 小さな部分)** — [FUSEye](../briefs/2026-10-06/2610.02799.md): 魚眼カメラ (mAP50 0.148) に、約 22 万 parameter の 0 初期化 adapter で 0.266、全体 fine-tuning の 84%。[MemFLoRA](../briefs/2026-10-08/2610.08669.md): CNN の端末上 PEFT の律速は activation メモリ。backward が full-width 入力に依存しない設計
+  - **対照の設計** — [Fold2Reason](../briefs/2026-10-06/2609.38879.md): fine-tuning データの追加実験には、ランダム/シャッフルの同量データを対照に置く
+- **OPD の recipe は「何を先に決めるか」の順序問題になった / 適合は凍結 + 小さな部分 + 絞ったデータ(2026-W40 の芯)**
   - **先に決める 2 変数** — [On/Off-Policy](../briefs/2026-09-30/2609.35259.md): 性能を決めるのは KL の向き (forward なら生成者に依らず安定)、忘却を決めるのは学習率。**off-policy で足りれば rollout の計算が丸ごと消える。**W36〜W39 の「on-policy + 監督の範囲」の読みは、この 2 変数を揃えた後の話になる
   - **段の順序と相性** — [SFT·RLVR·OPD](../briefs/2026-10-01/2609.31900.md): 9 組の teacher-student で、効くのは teacher の大きさでなく相性。**先に RL で強くした student は蒸留で下がる。**warm-up SFT + teacher の適合で 29.2% → 43.8%。capacity gap を「teacher を小さくする」以外で解く
   - **どこに当てるか / どれだけ強く当てるか** — [OG-OPD](../briefs/2026-09-30/2609.35319.md): 差が大きいターンではなく、最終的な成否に効いたターンに寄せる。[DN-MOPD](../briefs/2026-09-30/2609.35347.md): 複数 teacher の信号の大きさが不揃いだと 1 分野が独占する。**固定重みでもほぼ同等 = 分野別の loss 分散を 1 回測るだけで足りる可能性**
@@ -452,6 +463,17 @@
 ## 重要論文リスト
 | 日付 | 論文 | 一言 | brief |
 |---|---|---|---|
+| 2026-10-10 | **SRD (2610.08077)** | **hindsight を foresight へ self-distillation。全失敗 group 98% で 0% → 60.6%** | [brief](../briefs/2026-10-10/2610.08077.md) |
+| 2026-10-10 | PASS (2610.12345) | prior barrier の高い tail concept に instruction 予算を寄せる SFT | [brief](../briefs/2026-10-10/2610.12345.md) |
+| 2026-10-09 | **Deafening Silence (2610.09835)** | **忘却は出力 embedding に集中。出力層だけ Adam epsilon を上げて 39.4〜67.9% 減** | [brief](../briefs/2026-10-09/2610.09835.md) |
+| 2026-10-09 | Juno (2610.09940) | teacher を新ドメインで先に適応・凍結してから student を LoRA で合わせる | [brief](../briefs/2026-10-09/2610.09940.md) |
+| 2026-10-08 | **Cross-Tokenizer OPD (2610.08448)** | **strict 位置の top-16 語彙の reverse KL。網羅率より supervision の信頼性** | [brief](../briefs/2026-10-08/2610.08448.md) |
+| 2026-10-08 | MemFLoRA (2610.08669) | CNN 向け LoRA。端末上の律速は activation メモリ | [brief](../briefs/2026-10-08/2610.08669.md) |
+| 2026-10-07 | Flash-OPD (2610.06105) | 軌跡ごとに teacher が信頼できる長さで打ち切る OPD。コスト 2.2〜7.5 倍減 | [brief](../briefs/2026-10-07/2610.06105.md) |
+| 2026-10-07 | SimForcing (2610.06598) | sim 教師から motion の時間変化だけを蒸留 (P3 とも) | [brief](../briefs/2026-10-07/2610.06598.md) |
+| 2026-10-06 | FastOPD (2610.02832) | VLA を推論 2 ステップに蒸留。教師の 84% で遅延 78% 減 | [brief](../briefs/2026-10-06/2610.02832.md) |
+| 2026-10-06 | FUSEye (2610.02799) | 魚眼カメラへ 0 初期化 adapter。ラベル 25% で全ラベルの 97.6% | [brief](../briefs/2026-10-06/2610.02799.md) |
+| 2026-10-06 | Fold2Reason (2609.38879) | fine-tuning の追加実験にはシャッフル対照を置く設計の見本 (wildcard) | [brief](../briefs/2026-10-06/2609.38879.md) |
 | 2026-10-04 | **RIDE (2609.36484)** | **teacher を目標点でなく「base→teacher の方向」として表現上で外挿。平均で teacher を超えた唯一の手法。keyword 全滅の 2 例目** | [brief](../briefs/2026-10-04/2609.36484.md) |
 | 2026-10-04 | CrossFit (2609.39102) | pseudo-label ループの co-cheating を交差採点で半減。自動ラベリングの点検項目 | [brief](../briefs/2026-10-04/2609.39102.md) |
 | 2026-10-03 | DriftOPD (2610.00317) | 系列 reverse-KL = chunk 模倣 + 将来への影響 (offline Q)。1 ステップ VLA 方策への蒸留 | [brief](../briefs/2026-10-03/2610.00317.md) |

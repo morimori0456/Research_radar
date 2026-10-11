@@ -1,16 +1,22 @@
 # Fast Generative Inference — 推論ステップを削る生成 — Living Survey
-最終更新: 2026-10-04
+最終更新: 2026-10-11
 
 > 新設 (2026-W29)。プランナー (P1) と world model (P3) の双方で「反復 denoising を捨てる」
 > 論文が独立に3本以上溜まり、既存2サーベイのどちらにも収まらなくなったため分離した。
 
 ## 一言でいうと
 軌道生成も world model も diffusion / flow matching で書けるようになった一方、車載では **NFE (Number of Function Evaluations; サンプリング時のネットワーク評価回数) がそのままレイテンシ予算**になる。削り方は 7 系統 —— schedule で削る / 学習して削る (one-step drift) / 生成を 1 回にする / 完走しない (early exit) / 本番に載せない / 入力を伸ばさない / 最初から 1 ステップの目的を使う。
+**2026-W41 で、削る対象が step 数だけでなくなった: 再帰 rollout (GeoWM・PPWM は指定 horizon を直接・並列に予測)・候補ごとの重複した encode (LiteNWM は共有 encoding で 128 倍)・renderer (AgentGarten は video model を real-time に蒸留)。** step 数の側は FastOPD が 2 ステップで教師の 84%・遅延 78% 減 (W40 の DriftOPD・GFD-OPD に続き、1 ステップ化は蒸留の loss 設計の問題)。
 **捨てても壊れないことは構造で保証できる**のが通奏低音で、削ると失うのは多様性・多峰性、**どこまで削ってよいかは下流タスクが決める。**比較の作法は 2 つ: 少ステップ化には「同じ head を 1 ステップだけ積分したもの」、並列化には「普通の batch」を対照に入れる (W37・W39)。
-**2026-W40 で、1 ステップ化が VLA の action head で「蒸留の loss 設計」の問題になった:** 系列全体の reverse-KL を chunk の模倣と将来への影響に分ける (DriftOPD)、大→小で CFG が誤差を増幅するのを避ける (GFD-OPD)。車載の実測 (Jetson Orin で action head −70%) もブリーフ外で出た。
+
 
 ## 系譜マップ
-- **★ 1 ステップ化は VLA の action head で「蒸留の loss 設計」になった(2026-W40)**
+- **★ 削る対象が step から「再帰・重複 encode・renderer」へ広がった(2026-W41)**
+  - **step を削る** — [FastOPD](../briefs/2026-10-06/2610.02832.md): 大きな VLA を推論 2 ステップの student へ on-policy distillation。教師の 84% の性能で遅延 78% 減。**評価は操作タスクで、運転ではない**
+  - **再帰を削る** — [GeoWM](../briefs/2026-10-08/2610.07381.md): 未来の 3D geometry を再帰 rollout なしで直接予測。[PPWM](../briefs/2026-10-08/2610.08627.md): 未来軌道を並列に予測して planning の内側ループを速くする。**並列化の主張には「普通の batch」の対照を (W39 の作法)**
+  - **重複 encode を削る** — [LiteNWM](../briefs/2026-10-10/2610.12368.md): K 本の候補を共有 encoding で一括評価 (128 倍高速)。proposer を替えても再学習不要。操作/低速 navigation の結果
+  - **renderer を削る** — [AgentGarten](../briefs/2026-10-11/2610.12374.md): 状態は simulator に任せ、見た目の生成は video model を蒸留した neural renderer で real-time 化。Adversarial Forcing は過去の観測の encode まで後段の loss で更新する。game/agent 環境のみ
+- **1 ステップ化は VLA の action head で「蒸留の loss 設計」になった(2026-W40)**
   - [DriftOPD](../briefs/2026-10-03/2610.00317.md) — 多段の flow 方策を 1 ステップの student に offline で蒸留する。系列の reverse-KL = 各 chunk の模倣 + 将来への影響 (offline Q で推定)。**chunk ごとの模倣だけだと「近道だが後で行き止まり」を学ぶ**
   - [GFD-OPD](../briefs/2026-10-02/2609.39692.md) — 拡散の大→小蒸留で、CFG (条件あり/なしの差を拡大して忠実度を上げる手法) が student の誤差を増幅する。teacher の guided 出力を CFG なしの student に直接合わせる。**小型化した student の推論から CFG の 2 回評価も消える = NFE 半減の副産物**
   - 車載側 (ブリーフ外) — Kinematic MeanFlow `2610.00864` (Jetson Orin で action head の遅延 −67〜74%)、Real-Time VLAs `2609.39822` (生成ステップ 10 → 2)
@@ -112,6 +118,11 @@
 ## 重要論文リスト
 | 日付 | 論文 | 一言 | brief |
 |---|---|---|---|
+| 2026-10-11 | AgentGarten (2610.12374) | video model を real-time 化する蒸留 (Adversarial Forcing)。状態は simulator (game 環境のみ) | [brief](../briefs/2026-10-11/2610.12374.md) |
+| 2026-10-10 | **LiteNWM (2610.12368)** | **候補軌跡を共有 encoding で一括評価。128 倍高速で proposer 非依存** | [brief](../briefs/2026-10-10/2610.12368.md) |
+| 2026-10-08 | GeoWM (2610.07381) | 未来の 3D geometry を再帰 rollout なしで直接予測 | [brief](../briefs/2026-10-08/2610.07381.md) |
+| 2026-10-08 | PPWM (2610.08627) | 未来軌道の並列予測で planning を高速化 | [brief](../briefs/2026-10-08/2610.08627.md) |
+| 2026-10-06 | **FastOPD (2610.02832)** | **VLA を推論 2 ステップに蒸留。教師の 84% で遅延 78% 減 (操作タスク)** | [brief](../briefs/2026-10-06/2610.02832.md) |
 | 2026-10-03 | **DriftOPD (2610.00317)** | **flow 型 VLA 方策の 1 ステップ蒸留を「chunk 模倣 + 将来への影響」に分解** | [brief](../briefs/2026-10-03/2610.00317.md) |
 | 2026-10-02 | GFD-OPD (2609.39692) | 拡散の大→小で CFG が誤差を増幅。CFG なし student に guided 出力を直接合わせる | [brief](../briefs/2026-10-02/2609.39692.md) |
 | 2026-09-27 | Linear Superposition (2609.29845) | 1 forward に 2 本載せる。「2 倍速」は batch 2 と同速 = 対照の選び方の反面教師 | [brief](../briefs/2026-09-27/2609.29845.md) |
