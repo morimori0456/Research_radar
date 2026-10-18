@@ -1,17 +1,20 @@
 # Fast Generative Inference — 推論ステップを削る生成 — Living Survey
-最終更新: 2026-10-11
+最終更新: 2026-10-18
 
 > 新設 (2026-W29)。プランナー (P1) と world model (P3) の双方で「反復 denoising を捨てる」
 > 論文が独立に3本以上溜まり、既存2サーベイのどちらにも収まらなくなったため分離した。
 
 ## 一言でいうと
 軌道生成も world model も diffusion / flow matching で書けるようになった一方、車載では **NFE (Number of Function Evaluations; サンプリング時のネットワーク評価回数) がそのままレイテンシ予算**になる。削り方は 7 系統 —— schedule で削る / 学習して削る (one-step drift) / 生成を 1 回にする / 完走しない (early exit) / 本番に載せない / 入力を伸ばさない / 最初から 1 ステップの目的を使う。
-**2026-W41 で、削る対象が step 数だけでなくなった: 再帰 rollout (GeoWM・PPWM は指定 horizon を直接・並列に予測)・候補ごとの重複した encode (LiteNWM は共有 encoding で 128 倍)・renderer (AgentGarten は video model を real-time に蒸留)。** step 数の側は FastOPD が 2 ステップで教師の 84%・遅延 78% 減 (W40 の DriftOPD・GFD-OPD に続き、1 ステップ化は蒸留の loss 設計の問題)。
+**削る対象は step 数だけでない (W41)**: 再帰 rollout (GeoWM・PPWM は指定 horizon を直接・並列に予測)・候補ごとの重複した encode (LiteNWM は共有 encoding で 128 倍)・renderer (AgentGarten は video model を real-time に蒸留)。step 数の側は FastOPD が 2 ステップで教師の 84%・遅延 78% 減 (W40 の DriftOPD・GFD-OPD に続き、1 ステップ化は蒸留の loss 設計の問題)。
+**2026-W42 は「どのモデルで解くか」を token 単位で削る話が出た**: TokenRouter は 1 token ごとに大小 2 つの LLM を切り替える routing を、モデルごとの subserver と delayed-batching scheduler (少し待って batch をまとめる) で速く serving する (decoding throughput 2.01〜64.15 倍・比較条件の幅が大きく何に対する倍率かは未確認)。LLM の text decoding のみで、運転の低 latency 制約は扱っていない。
 **捨てても壊れないことは構造で保証できる**のが通奏低音で、削ると失うのは多様性・多峰性、**どこまで削ってよいかは下流タスクが決める。**比較の作法は 2 つ: 少ステップ化には「同じ head を 1 ステップだけ積分したもの」、並列化には「普通の batch」を対照に入れる (W37・W39)。
 
 
 ## 系譜マップ
-- **★ 削る対象が step から「再帰・重複 encode・renderer」へ広がった(2026-W41)**
+- **★ 削る対象が「どのモデルで解くか」へ(2026-W42)**
+  - **モデルを削る (token 単位)** — [TokenRouter](../briefs/2026-10-12/2610.12242.md): request-centric に routing を書き、runtime が LLM ごとの subserver へ非同期に振り分ける。step のずれ (step desynchronization) を許容するのが設計の肝。蒸留の別解 (易しい token だけ小モデル) として P2 の student との比較対象になる。**serving 規模の話で、蒸留 recipe としての知見は無い**
+- **削る対象が step から「再帰・重複 encode・renderer」へ広がった(2026-W41)**
   - **step を削る** — [FastOPD](../briefs/2026-10-06/2610.02832.md): 大きな VLA を推論 2 ステップの student へ on-policy distillation。教師の 84% の性能で遅延 78% 減。**評価は操作タスクで、運転ではない**
   - **再帰を削る** — [GeoWM](../briefs/2026-10-08/2610.07381.md): 未来の 3D geometry を再帰 rollout なしで直接予測。[PPWM](../briefs/2026-10-08/2610.08627.md): 未来軌道を並列に予測して planning の内側ループを速くする。**並列化の主張には「普通の batch」の対照を (W39 の作法)**
   - **重複 encode を削る** — [LiteNWM](../briefs/2026-10-10/2610.12368.md): K 本の候補を共有 encoding で一括評価 (128 倍高速)。proposer を替えても再学習不要。操作/低速 navigation の結果
@@ -118,6 +121,7 @@
 ## 重要論文リスト
 | 日付 | 論文 | 一言 | brief |
 |---|---|---|---|
+| 2026-10-12 | TokenRouter (2610.12242) | token-level LLM routing の serving system。throughput 2.01〜64.15 倍 (条件は未確認・LLM のみ) | [brief](../briefs/2026-10-12/2610.12242.md) |
 | 2026-10-11 | AgentGarten (2610.12374) | video model を real-time 化する蒸留 (Adversarial Forcing)。状態は simulator (game 環境のみ) | [brief](../briefs/2026-10-11/2610.12374.md) |
 | 2026-10-10 | **LiteNWM (2610.12368)** | **候補軌跡を共有 encoding で一括評価。128 倍高速で proposer 非依存** | [brief](../briefs/2026-10-10/2610.12368.md) |
 | 2026-10-08 | GeoWM (2610.07381) | 未来の 3D geometry を再帰 rollout なしで直接予測 | [brief](../briefs/2026-10-08/2610.07381.md) |

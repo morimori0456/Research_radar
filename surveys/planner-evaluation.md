@@ -1,14 +1,18 @@
 # Planner Evaluation & Safe Motion Planning — Living Survey
-最終更新: 2026-10-11
+最終更新: 2026-10-18
 
 ## 一言でいうと
-自動運転プランナを「衝突率」一本で測る時代を終わらせ、**過保守も含めて保証付きで**測る評価を追う分野。論点は 採点 → 診断 → 定義の破綻 (W33) → 保証の天井 (W34) → 何を代わりに測るか (W35) → 集約指標は劣化を報告しない (W36) → 指標を防衛する 2 つの質問 (W37) → 判定を分解する (W39) → planner の「段」に帰属させる (W40) → **平均を取る前に切る (W41)** と降りてきた。
-**2026-W41 で、「切り口」が 4 つ揃った: 時間 (100 秒 vs 先頭 20 秒; Odyssey)・場面 (危険な歩行者で HDScore 88.8 → 47.4; ControlPed)・環境の確率性 (確率的な環境で classical と RL の勝者が反転; Dynamic Hazard)・データの支持 (自車軌道と周囲の「組み合わせ」が logged data に在るか; ICDP)。**W40 までの「段」「後処理あり/なし」と合わせ、planner の比較には 切り口 × 段 × 後処理 を明記する。
+自動運転プランナを「衝突率」一本で測る時代を終わらせ、**過保守も含めて保証付きで**測る評価を追う分野。論点は 採点 → 診断 → 定義の破綻 (W33) → 保証の天井 (W34) → 何を代わりに測るか (W35) → 集約指標は劣化を報告しない (W36) → 指標を防衛する 2 つの質問 (W37) → 判定を分解する (W39) → planner の「段」に帰属させる (W40) → 平均を取る前に切る (W41) → **切る軸を人が決めず、モデルの不確実性に選ばせる (W42)** と降りてきた。
+**切り口は 5 つ: 時間 (100 秒 vs 先頭 20 秒; Odyssey)・場面 (危険な歩行者で HDScore 88.8 → 47.4; ControlPed)・環境の確率性 (確率的な環境で classical と RL の勝者が反転; Dynamic Hazard)・データの支持 (自車軌道と周囲の組み合わせが logged data に在るか; ICDP)・2026-W42 で加わった epistemic uncertainty (モデルの知識不足による不確実性)。**Uncertainty-Driven Self-Play では uncertainty 上位の agent の失敗率が下位の 14.8 倍で、ラベル無しで難シナリオを優先づけできる (nuPlan Val14 の zero-shot 99.12%)。W40 までの「段」「後処理あり/なし」と合わせ、比較には 切り口 × 段 × 後処理 を明記する。
+言語指示を持つ planner では、評価軸に「危険な指示への対応」が加わる (SafeDriveVLA: SimLingo は矛盾した指示で大きく劣化)。
 P3 側でも同じ形が出ている: 予測誤差の合計は planning の成否を説明しない (DRPE・低誤差診断)。R1 の「衝突率は判断の質を報告しない」は、評価と world model の 2 分野で裏付けが増えた。**足りないのは材料ではなく、それを測る 2D toy である。**
 
 
 ## 系譜マップ
-- **★ 平均を取る前に切る —— 時間・場面・確率性・データの支持(2026-W41 の芯)**
+- **★ 難しさの選別を uncertainty に任せる(2026-W42 の芯)**
+  - **uncertainty でシナリオを選ぶ** — [Uncertainty-Driven Self-Play](../briefs/2026-10-16/2610.19714.md): agent の半分に「隣接 agent の epistemic uncertainty を上げる」報酬を与え、policy が最も自信のない状況の curriculum を自動生成。nuPlan Val14 99.12% (標準 self-play 97.97%)・Argoverse 2 82.39% (78.03%) を zero-shot で達成。uncertainty 上位の agent は下位の 14.8 倍失敗する。**評価側への転用 (既存シナリオ集合の並べ替え) は未検証・推定法の詳細は本文で要確認**
+  - **指示の危険性を評価軸にする** — [SafeDriveVLA](../briefs/2026-10-16/2610.20609.md): ナビ追従・矛盾認識・adversarial 頑健性を同時に測る benchmark suite。既存 VLA は矛盾指示で大きく劣化する。**公開状況は未確認**
+- **平均を取る前に切る —— 時間・場面・確率性・データの支持(2026-W41 の芯)**
   - **時間** — [Odyssey](../briefs/2026-10-07/2610.06469.md): 100 秒の closed-loop と明示的な経路指定で、「最初の判断が 1 分後に響く」失敗と車線変更の準備 (RouteDS・Pre-Lane Change Score) を測る。コード公開待ち
   - **場面 (slice)** — [ControlPed](../briefs/2026-10-07/2610.06171.md): 危険な歩行者の 88 scenario で、7 つの E2E の HDScore が平均 88.8 → 47.4。通常 benchmark のスコアが高くても、この slice を足す必要がある。[AD-Memo](../briefs/2026-10-05/2609.38641.md) の「記憶が要る場面だけを別に集計する」も同型
   - **環境の確率性** — [Dynamic Hazard](../briefs/2026-10-10/2610.12249.md): deterministic なら classical が成功率ほぼ 100%、stochastic では PPO の policy が上回る。決め手は部分観測でなく障害物の動きの不確実性。**success rate は計算 budget とセットで報告する。**2D の toy 環境で、運転は未検証
@@ -415,6 +419,8 @@ P3 側でも同じ形が出ている: 予測誤差の合計は planning の成�
 ## 重要論文リスト
 | 日付 | 論文 | 一言 | brief |
 |---|---|---|---|
+| 2026-10-16 | **Uncertainty-Driven Self-Play (2610.19714)** | **epistemic uncertainty で難シナリオを自動選別。上位 agent の失敗率は下位の 14.8 倍・nuPlan Val14 99.12%** | [brief](../briefs/2026-10-16/2610.19714.md) |
+| 2026-10-16 | SafeDriveVLA (2610.20609) | 危険なナビ指示への追従・拒否を測る conflict-aware benchmark と、world model で従った未来を想像する VLA | [brief](../briefs/2026-10-16/2610.20609.md) |
 | 2026-10-10 | **Dynamic Hazard (2610.12249)** | **環境の確率性で classical と RL の勝者が反転。success は budget とセットで報告 (2D toy 環境)** | [brief](../briefs/2026-10-10/2610.12249.md) |
 | 2026-10-10 | X-TRACK 拡張 (2610.11580) | ensemble + conformal で coverage 保証付きの予測領域 (highway のみ・marginal) | [brief](../briefs/2026-10-10/2610.11580.md) |
 | 2026-10-09 | **ICDP (2610.09763)** | **ego 軌道と周囲の組み合わせの支持を密度比で測る offline RL planner。失敗の予兆指標の候補** | [brief](../briefs/2026-10-09/2610.09763.md) |

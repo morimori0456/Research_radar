@@ -1,15 +1,20 @@
 # VLA / World Model / E2E Driving — Living Survey
-最終更新: 2026-10-11
+最終更新: 2026-10-18
 
 ## 一言でいうと
-言語・視覚・行動を 1 つのモデルで扱う **VLA (Vision-Language-Action)** と、世界の遷移を予測する **world model** を end-to-end 自動運転にどう接続するかを追う分野。論点は「どう繋ぐか」→「何で測るか」(W33) →「使い方の順序尺度」(W34) →「そもそも使えるか」(W35) → 勾配が届いていない状態 (W36) → 抽象の層の調達先 (W37) → 遮蔽の測り方 (W39) → 予測が正確でも planning は失敗する (W40) → **その検査手順と対策 (W41)** と降りてきた。
-**2026-W41 で、W40 の命題が検査手順の形になった: 平均誤差 (MSE) でなく、「同じ状態から行動だけ変えた候補の順位」と「行動を変えたとき出力が動くか」で測る。**動かない原因は観測側 (次の画像の 41.5% は行動を変えても同一) と predictor 側 (行動の経路を使わない; ノイズの 1/50〜1/190 しか動かない) に分かれる。対策は、予測 target を「行動と制御に関わる情報」だけに絞る (AVL-JEPA・MiniWAM)、再帰 rollout をやめる (GeoWM・PPWM)、候補評価を共有 encoding で一括にする (LiteNWM)。
-**未決着: RoboJEPA の「imagination error は下流の代理になる」と、「低い誤差が planning を誤らせる」(診断論文) は緊張関係にある。**どちらも運転での検証は無い。
-**中心の問い「world model を *別に立てる* 必然性は何か」への暫定の答え: 生成器としてではなく、行動への応答性と選択の正しさで検査できるときだけ。**R3 は着手しない方針なので、今週分も分類マップ用の在庫。
+言語・視覚・行動を 1 つのモデルで扱う **VLA (Vision-Language-Action)** と、世界の遷移を予測する **world model** を end-to-end 自動運転にどう接続するかを追う分野。論点は「どう繋ぐか」→「何で測るか」(W33) →「使い方の順序尺度」(W34) →「そもそも使えるか」(W35) → 勾配が届いていない状態 (W36) → 抽象の層の調達先 (W37) → 遮蔽の測り方 (W39) → 予測が正確でも planning は失敗する (W40) → 検査手順と対策 (W41) → **どの部品を分離して繋ぐか (W42)** と降りてきた。
+**検査は、平均誤差 (MSE) でなく「同じ状態から行動だけ変えた候補の順位」と「行動を変えたとき出力が動くか」で行う (W41)。**動かない原因は観測側 (次の画像の 41.5% は行動を変えても同一) と predictor 側 (ノイズの 1/50〜1/190 しか動かない) に分かれる。対策は、予測 target を制御関連の情報だけに絞る (AVL-JEPA・MiniWAM)、再帰 rollout をやめる (GeoWM・PPWM)、候補評価を一括にする (LiteNWM)。
+**2026-W42 は繋ぎ方の側が揃った: 密結合をやめて分離する。**VLA への world model 統合 4 方式を同条件で比べた結果、行動と別の future 専用 expert を持つ decoupled MoT (Mixture-of-Transformers) が OOD に強く、2D semantic 表現が方式を横断して安定した (What Matters; manipulation 中心)。perception は grounding 専用 backbone に差し替え (GroundingPI)、学習は「状態 policy → dynamics 推定 → 視覚は低次元表現だけ復元」に分解 (Reflex)、運転では「従う/拒否」の判断と action 生成を分け、従った未来を world model で想像してゲートにかける (SafeDriveVLA; 危険指示での衝突 60 → 38)。
+**未決着: RoboJEPA の「imagination error は下流の代理になる」と、「低い誤差が planning を誤らせる」(診断論文) は緊張関係にある。**分離の効果も、運転での閉ループ検証は SafeDriveVLA の Bench2Drive だけで、他は manipulation / humanoid の simulation。
+**中心の問い「world model を *別に立てる* 必然性は何か」への暫定の答え: 生成器としてではなく、行動への応答性と選択の正しさで検査でき、decoupled な部品として足せるときだけ。**R3 は着手しない方針なので、今週分も分類マップ用の在庫。
 
 
 ## 系譜マップ
-- **★ 検査は「行動への応答と候補の順位」で行い、target は小さく制御関連にする(2026-W41 の芯)**
+- **★ 密結合をやめて分離する —— future expert・perception・判断と生成(2026-W42 の芯)**
+  - **統合方式の比較** — [What Matters](../briefs/2026-10-16/2610.19825.md): VLA × world model を Implicit Future Alignment / Explicit Future Query / MoT Future Expert / External World Predictor に分類して同条件で比較。decoupled な MoT Future Expert が総合で競争的で OOD に強く、2D semantic 表現が安定。action-only より long-horizon・dynamic で改善。**manipulation 中心・運転は未検証**
+  - **perception の分離** — [GroundingPI](../briefs/2026-10-14/2609.39601.md): 点・box を座標 token として語彙内で出す 4B の grounding 専用モデルを VLA/WAM の backbone に差し替える。nuScenes は open-loop L2 0.296 m のみ。**公開有無・推論速度は未確認**
+  - **学習と判断の分離** — [Reflex](../briefs/2026-10-13/2610.12772.md): state policy → dynamics 推定 → 視覚 encoder が dynamics 表現だけ復元 (controller 固定)。[SafeDriveVLA](../briefs/2026-10-16/2610.20609.md): 3 段階の compliance mode を予測して判断と生成を分け、「指示に従った未来」を world model で想像して安全性を判定。**world model の計算コストは未確認**
+- **検査は「行動への応答と候補の順位」で行い、target は小さく制御関連にする(2026-W41 の芯)**
   - **診断**
     - [低誤差が planning を誤らせる](../briefs/2026-10-07/2610.05550.md): 誤差を center (全候補共通の偏り) と action-relative response (行動ごとの違いへの反応) に分ける。16 セル中 14 で center が MSE を支配するが、6 セルでは action-relative だけを直した方が順位相関が良い。実際の終端を再 encode すると順位相関 0.193 → 0.631 (PushT) で、順位が落ちる段を特定できる。**設定で結論が変わり、小規模な control task のみ**
     - [JEPA 分岐](../briefs/2026-10-06/2610.02860.md): 次の画像の 41.5% は行動を変えても画素が同一。見える場合も predictor の応答はノイズの 1/50〜1/190。**閉ループ simulator の他車が ego に反応するかの検査にそのまま使える (P1 側)**
@@ -414,6 +419,10 @@
 ## 重要論文リスト
 | 日付 | 論文 | 一言 | brief |
 |---|---|---|---|
+| 2026-10-16 | **What Matters (2610.19825)** | **VLA × world model 4 方式の統一比較。decoupled MoT future expert が OOD に強く、2D semantic が安定 (manipulation 中心)** | [brief](../briefs/2026-10-16/2610.19825.md) |
+| 2026-10-16 | **SafeDriveVLA (2610.20609)** | **従った未来を world model で想像してゲート。危険指示での衝突 60 → 38 (Bench2Drive)** | [brief](../briefs/2026-10-16/2610.20609.md) |
+| 2026-10-14 | GroundingPI (2609.39601) | grounding 専用 4B を VLA の backbone に。nuScenes は open-loop L2 のみ | [brief](../briefs/2026-10-14/2609.39601.md) |
+| 2026-10-13 | Reflex (2610.12772) | 3 段の学習分解で視覚学習を低次元の回帰に (humanoid sim) | [brief](../briefs/2026-10-13/2610.12772.md) |
 | 2026-10-11 | AgentGarten (2610.12374) | 状態は simulator・見た目は neural renderer。履歴 encode まで後段 loss で更新 (game 環境のみ) | [brief](../briefs/2026-10-11/2610.12374.md) |
 | 2026-10-10 | **MiniWAM (2610.12194)** | **予測 target を制御関連の低次元表現に。65 倍小さく学習 8 倍速** | [brief](../briefs/2026-10-10/2610.12194.md) |
 | 2026-10-10 | LiteNWM (2610.12368) | 候補軌跡を共有 encoding で一括評価。128 倍高速で proposer 非依存 | [brief](../briefs/2026-10-10/2610.12368.md) |

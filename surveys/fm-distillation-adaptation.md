@@ -1,15 +1,20 @@
 # Foundation Model Distillation & Adaptation — Living Survey
-最終更新: 2026-10-11
+最終更新: 2026-10-18
 
 ## 一言でいうと
-大きな基盤モデルの能力を**小さく・低メモリ・ローカル実行可能**な形に移し、他ドメイン・他機種へ適合させる方法を追う分野。論点は「どう縮めるか」→「何で教えるか」→ 前提の崩壊 (W33) → step length と適合の 4 層 (W34) → 支配変数は loss の外側 (W35) → 監督を当てる範囲 (W36) → data selection (W37) → 配管の交絡 (W39) → 先に決める変数 (W40) → **効く場所に絞る (W41)** と降りてきた。適合の評価軸は「同じ適合精度のときにどれだけ忘れたか」。
+大きな基盤モデルの能力を**小さく・低メモリ・ローカル実行可能**な形に移し、他ドメイン・他機種へ適合させる方法を追う分野。論点は「どう縮めるか」→「何で教えるか」→ 前提の崩壊 (W33) → step length と適合の 4 層 (W34) → 支配変数は loss の外側 (W35) → 監督を当てる範囲 (W36) → data selection (W37) → 配管の交絡 (W39) → 先に決める変数 (W40) → 効く場所に絞る (W41) → **絞る場所を何で決めるか (W42)** と降りてきた。適合の評価軸は「同じ適合精度のときにどれだけ忘れたか」。
 **OPD (on-policy distillation; student 自身の生成物の上で teacher に合わせる蒸留) の recipe は、先に KL の向き (性能) と学習率 (忘却) を決め、on-policy かどうかは後 (W40)。**teacher の大きさより相性が効き、相性は前段 (warm-up SFT・先の RL) で変わる。
-**2026-W41 で共通の型が見えた: 全体に均一にかけず、効く場所に絞る。**監督は確実に対応する位置の top-16 語彙だけ (Cross-Tokenizer; 網羅率 100% にすると gradient が食い違って下がる)、介入は出力層の Adam epsilon だけ (Deafening Silence; 忘却 39.4〜67.9% 減)、データ予算は事前学習で弱い tail concept に寄せる (PASS)、rollout は teacher が信頼できる長さで打ち切る (Flash-OPD; コスト 1/2.2〜1/7.5)。**外部 teacher が要らない/先に適応させる**流れも出た (SRD・Juno)。
-**適合の側は「backbone を凍結し、小さな部分を目的の場面に絞った少量データで合わせる」が揃っている** (Truck VLA / PAGER / OTT3R に続き FUSEye: 約 22 万 parameter の 0 初期化 adapter、ラベル 25% で全ラベルの 97.6%)。
+**共通の型は「全体に均一にかけず、効く場所に絞る」。**W41 は絞り方を事前に決めた: 確実に対応する位置の top-16 語彙だけ (Cross-Tokenizer)、出力層の Adam epsilon だけ (Deafening Silence; 忘却 39.4〜67.9% 減)、tail concept に予算 (PASS)、teacher が信頼できる長さで打ち切り (Flash-OPD)。**2026-W42 は、絞る場所を走らせながら測って決める型が出た:** student の surprisal (予測の意外さ) 上位 10% の prefix だけ teacher に聞く (PA1-OPD)、teacher の RL 履歴の 2 つの shift (RL 前後の log-prob 差) の向きが揃う prefix だけ通す (Waypoint-OPD; Qwen3 の 6 設定で最高)、1 段目が張る部分空間を除いた residual gradient 方向だけに 2 段目の LoRA を割り当てる (ReGRA; 同じ総 rank で 2 倍 rank に並ぶ)。いずれも LLM の検証のみ。
+**適合の側は「backbone を凍結し、小さな部分を目的の場面に絞った少量データで合わせる」が揃っている** (Truck VLA / PAGER / OTT3R / FUSEye: 約 22 万 parameter の 0 初期化 adapter、ラベル 25% で全ラベルの 97.6%)。
 
 
 ## 系譜マップ
-- **★ 全体に均一にかけず、効く場所に絞る —— 監督・介入・予算・rollout(2026-W41 の芯)**
+- **★ 絞る場所を、走らせながら測って決める —— surprisal・shift の向き・残差方向(2026-W42 の芯)**
+  - **student の状態で選ぶ** — [PA1-OPD](../briefs/2026-10-16/2610.19601.md): corpus 上の prefix から student が 1 step だけ sampling し、その先で teacher に聞く (one-step の OPD)。surprisal 上位 10% の root だけ選ぶと KD の cross-entropy 改善幅に 48.85% 上乗せ。推論は不変。**LM pretraining のみ・downstream 未確認**
+  - **teacher の履歴で選ぶ** — [Waypoint-OPD](../briefs/2026-10-17/2610.21601.md): RL 済み teacher の中間 checkpoint を 1 本使い、「初期→中間」と「中間→終点」の shift の向きが prefix ごとに一致するときだけ endpoint shift を student に渡す。追加コストは teacher の scoring 1 回。gate を外す/shuffle すると数学が低下。**数学・コードの LLM のみ・teacher と student が同系統 (Qwen3) の可能性**
+  - **adapter の方向を選ぶ** — [ReGRA](../briefs/2026-10-16/2610.19700.md): 1 段目の LoRA 更新が張る部分空間を task gradient から除き、残差方向で 2 段目を初期化 (直交性 regularizer 付き)。merge 後の推論コスト不変。コード公開済み。**ベンチマーク種別は未確認**
+  - **隣接** — [Reflex](../briefs/2026-10-13/2610.12772.md): 特権情報を持つ state policy の入力表現を、画像だけの encoder が復元する privileged teacher → vision student (87.9% → 85.7%・humanoid sim のみ)。[TokenRouter](../briefs/2026-10-12/2610.12242.md): 蒸留の別解として、易しい token だけ小モデルに任せる routing の serving (LLM decoding のみ)
+- **全体に均一にかけず、効く場所に絞る —— 監督・介入・予算・rollout(2026-W41 の芯)**
   - **監督を絞る** — [Cross-Tokenizer OPD](../briefs/2026-10-08/2610.08448.md): tokenizer の異なる teacher-student で、strict 1:1 に対応する位置の top-16 共通語彙の reverse KL だけで、全語彙と同等の精度。対応の不確かな span を足すと、gradient の向きが strict と食い違って精度が落ちる。**補助 loss を足す前に gradient の cosine を見る。**LLM の推論・code タスクのみ
   - **介入を絞る** — [Deafening Silence](../briefs/2026-10-09/2610.09835.md): 忘却は新データにほぼ出ない token の output embedding に集中する (Adam の正規化が一方向の勾配を全幅の更新に増幅)。出力 projection だけ epsilon を大きくして、安定な 7 設定で忘却 39.4〜67.9% 減。LoRA で released-head を学習すると忘却が 23 倍。**LLM のみ・視覚は未確認**
   - **予算を絞る** — [PASS](../briefs/2026-10-10/2610.12345.md): SFT を long-tail の視点で見直す。事前学習で支持が弱い concept (prior barrier が高い) に instruction 予算を寄せる
@@ -463,6 +468,10 @@
 ## 重要論文リスト
 | 日付 | 論文 | 一言 | brief |
 |---|---|---|---|
+| 2026-10-17 | **Waypoint-OPD (2610.21601)** | **RL 前後の shift を中間 checkpoint で選別して転送。Qwen3 の 6 設定で最高 (数学・コードのみ)** | [brief](../briefs/2026-10-17/2610.21601.md) |
+| 2026-10-16 | ReGRA (2610.19700) | 相補的な 2 段 LoRA。同じ総 rank で 2 倍 rank に並び、merge 後の推論コスト不変 (コード公開) | [brief](../briefs/2026-10-16/2610.19700.md) |
+| 2026-10-16 | PA1-OPD (2610.19601) | surprisal 上位 10% の prefix だけ 1 step on-policy 展開。KD の改善幅に 48.85% 上乗せ (LM pretraining) | [brief](../briefs/2026-10-16/2610.19601.md) |
+| 2026-10-13 | Reflex (2610.12772) | privileged state policy → 視覚 encoder が dynamics 表現を復元。87.9% → 85.7% (humanoid sim) | [brief](../briefs/2026-10-13/2610.12772.md) |
 | 2026-10-10 | **SRD (2610.08077)** | **hindsight を foresight へ self-distillation。全失敗 group 98% で 0% → 60.6%** | [brief](../briefs/2026-10-10/2610.08077.md) |
 | 2026-10-10 | PASS (2610.12345) | prior barrier の高い tail concept に instruction 予算を寄せる SFT | [brief](../briefs/2026-10-10/2610.12345.md) |
 | 2026-10-09 | **Deafening Silence (2610.09835)** | **忘却は出力 embedding に集中。出力層だけ Adam epsilon を上げて 39.4〜67.9% 減** | [brief](../briefs/2026-10-09/2610.09835.md) |
