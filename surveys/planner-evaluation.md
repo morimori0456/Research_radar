@@ -1,17 +1,20 @@
 # Planner Evaluation & Safe Motion Planning — Living Survey
-最終更新: 2026-10-18
+最終更新: 2026-10-25
 
 ## 一言でいうと
-自動運転プランナを「衝突率」一本で測る時代を終わらせ、**過保守も含めて保証付きで**測る評価を追う分野。論点は 採点 → 診断 → 定義の破綻 (W33) → 保証の天井 (W34) → 何を代わりに測るか (W35) → 集約指標は劣化を報告しない (W36) → 指標を防衛する 2 つの質問 (W37) → 判定を分解する (W39) → planner の「段」に帰属させる (W40) → 平均を取る前に切る (W41) → **切る軸を人が決めず、モデルの不確実性に選ばせる (W42)** と降りてきた。
-**切り口は 5 つ: 時間 (100 秒 vs 先頭 20 秒; Odyssey)・場面 (危険な歩行者で HDScore 88.8 → 47.4; ControlPed)・環境の確率性 (確率的な環境で classical と RL の勝者が反転; Dynamic Hazard)・データの支持 (自車軌道と周囲の組み合わせが logged data に在るか; ICDP)・2026-W42 で加わった epistemic uncertainty (モデルの知識不足による不確実性)。**Uncertainty-Driven Self-Play では uncertainty 上位の agent の失敗率が下位の 14.8 倍で、ラベル無しで難シナリオを優先づけできる (nuPlan Val14 の zero-shot 99.12%)。W40 までの「段」「後処理あり/なし」と合わせ、比較には 切り口 × 段 × 後処理 を明記する。
-言語指示を持つ planner では、評価軸に「危険な指示への対応」が加わる (SafeDriveVLA: SimLingo は矛盾した指示で大きく劣化)。
-P3 側でも同じ形が出ている: 予測誤差の合計は planning の成否を説明しない (DRPE・低誤差診断)。R1 の「衝突率は判断の質を報告しない」は、評価と world model の 2 分野で裏付けが増えた。**足りないのは材料ではなく、それを測る 2D toy である。**
+自動運転プランナを「衝突率」一本で測る時代を終わらせ、**過保守も含めて保証付きで**測る評価を追う分野。論点は 採点 → 診断 → 定義の破綻 (W33) → 保証の天井 (W34) → 何を代わりに測るか (W35) → 集約指標は劣化を報告しない (W36) → 指標を防衛する 2 つの質問 (W37) → 判定を分解する (W39) → planner の「段」に帰属させる (W40) → 平均を取る前に切る (W41) → 切る軸をモデルの不確実性に選ばせる (W42) → **片方の要因だけ変えて出力が動くかを測る (W43)** と降りてきた。
+**切り口は 5 つ (時間・場面・環境の確率性・データの支持・epistemic uncertainty = モデルの知識不足による不確実性) で、比較には 切り口 × 段 × 後処理 を明記する (W42 まで)。W43 は切るのでなく「対」にする型が 5 本揃った:** 指示だけ差し替え (Cartender)・危険物の距離だけ振る (Perceives but Doesn't Brake; 縦方向の plan は ego-speed 履歴に支配される)・推論文の書き換え vs カメラ黒塗り (2610.30953)・event 時刻だけ実データに差し替え (Events, Not Pixels; return 誤差の中央値 70% が少数の event step)・expert 選択 vs 少数シーンの fine-tuning (Route or Adapt)。共通の結論は **「指標の数字が改善しても、本物かは対で確かめる」**: open-loop が上がって closed-loop が下がる (nuPlan)、退化した軌道で offset が低く出る。
+言語指示を持つ planner では、評価軸に「危険な指示への対応」(SafeDriveVLA) と「指示が実際に効いているか」(Cartender) が加わる。P3 側も同型で、予測誤差の合計は planning の成否を説明しない (DRPE・Events, Not Pixels)。**R1 の「衝突率は判断の質を報告しない」は裏付けが増えた。足りないのは材料ではなく、それを測る 2D toy である。**
 
 
 ## 系譜マップ
-- **★ 難しさの選別を uncertainty に任せる(2026-W42 の芯)**
-  - **uncertainty でシナリオを選ぶ** — [Uncertainty-Driven Self-Play](../briefs/2026-10-16/2610.19714.md): agent の半分に「隣接 agent の epistemic uncertainty を上げる」報酬を与え、policy が最も自信のない状況の curriculum を自動生成。nuPlan Val14 99.12% (標準 self-play 97.97%)・Argoverse 2 82.39% (78.03%) を zero-shot で達成。uncertainty 上位の agent は下位の 14.8 倍失敗する。**評価側への転用 (既存シナリオ集合の並べ替え) は未検証・推定法の詳細は本文で要確認**
-  - **指示の危険性を評価軸にする** — [SafeDriveVLA](../briefs/2026-10-16/2610.20609.md): ナビ追従・矛盾認識・adversarial 頑健性を同時に測る benchmark suite。既存 VLA は矛盾指示で大きく劣化する。**公開状況は未確認**
+- **★ 「片方の要因だけ変えて、出力が動くか」で測る —— 対の検査と、指標の改善を信じてよいかの点検(2026-W43 の芯。R1 の「隣に置く量」と同型)**
+  - **入力の対** — [Perceives but Doesn't Brake](../briefs/2026-10-22/2610.28184.md): 危険物の距離だけ / ego-speed 履歴だけを変えた対のシナリオで、危険は表現に符号化され軌道 generator も減速できるのに、縦方向の plan が履歴に支配され距離に弱くしか反応しないことを示す (軌道の誤差では見えない)。frozen な flow-matching sampler に hazard-conditioned guidance を足すと侵入率 58.1 → 14.5%。**正確な障害物の幾何が与えられた条件の数値**。[Cartender](../briefs/2026-10-21/2610.26390.md): 録画を固定して指示だけ差し替える。VLM に「選ばなかった運転」を提案させて負例を作り、実行不可能な指示を実行する率 53.36 → 14.18%。**RFS (Rater Feedback Score) は Waymo の基準に依存**。[2610.30953](../briefs/2026-10-24/2610.30953.md): driving VLA の推論文を書き換えても軌道はほとんど変わらないが、カメラ画像を黒塗りすると大きく変わる = 説明と挙動は弱くしか結びつかない
+  - **指標の改善を信じてよいか** — [Route or Adapt](../briefs/2026-10-24/2610.31095.md): nuPlan で open-loop の offset が良くなっても closed-loop が悪化し、2 つの baseline は退化した軌道で低い offset を出していた → 点検項目は「open-loop と closed-loop を並べる」「軌道が静止・直線に潰れていないか」。[Experience Memory](../briefs/2026-10-22/2610.27714.md): closed-loop 評価の統制項目 (resample した warmup pool・token 数を揃えた無関係な入力の対照・再実装の監査)。**HighwayEnv + gpt-4o-mini の限定で、評価の作法として読む**
+  - **評価器 (simulator / world model) の誤差の場所** — [Events, Not Pixels](../briefs/2026-10-23/2610.29435.md): 想像した遷移を実際の遷移に差し替えて return 誤差の減り方を見る診断。報酬・終了の少数の event step が誤差の中央値 70% を占め、画像誤差が最大の step を直してもランダムより効かない (Atari-100k の 44 組中 39 組)。**Atari と制御 task のみ・運転での再現は未確認**
+  - **学習手順の寄与を切り分ける** — [DriveMLP](../briefs/2026-10-23/2610.29676.md): closed-loop で走らせ「人間の軌道との距離」を報酬にした RL (EGRL) だけで、MLP が nuPlan の reactive closed-loop で既存最良を +3.2 上回り 15 倍以上速い (コード公開)。[TerraTransfer++](../briefs/2026-10-24/2610.30319.md): NAVSIM navhard と HUGSim の closed-loop の両方で測り、人間ログに近いこと以外で評価する例
+  - **隣接** — [GPT-6-Astra](../briefs/2026-10-20/2610.22471.md): 汎用 model の embodied 評価で挙がった失敗要因 (物理状態の検証・不可逆な失敗からの回復・長 horizon での進捗保持) は、途中経過を見る指標の観点と重なる。abstract は途中で切れ、数値は未確認
+- **難しさの選別を uncertainty に任せる(2026-W42)**: [Uncertainty-Driven Self-Play](../briefs/2026-10-16/2610.19714.md) は隣接 agent の epistemic uncertainty を上げる報酬で難シナリオの curriculum を自動生成する (nuPlan Val14 99.12%・uncertainty 上位の agent は下位の 14.8 倍失敗)。評価側への転用 (既存シナリオ集合の並べ替え) は未検証。[SafeDriveVLA](../briefs/2026-10-16/2610.20609.md) は指示の危険性を評価軸にする (既存 VLA は矛盾指示で大きく劣化・公開状況は未確認)
 - **平均を取る前に切る —— 時間・場面・確率性・データの支持(2026-W41 の芯)**
   - **時間** — [Odyssey](../briefs/2026-10-07/2610.06469.md): 100 秒の closed-loop と明示的な経路指定で、「最初の判断が 1 分後に響く」失敗と車線変更の準備 (RouteDS・Pre-Lane Change Score) を測る。コード公開待ち
   - **場面 (slice)** — [ControlPed](../briefs/2026-10-07/2610.06171.md): 危険な歩行者の 88 scenario で、7 つの E2E の HDScore が平均 88.8 → 47.4。通常 benchmark のスコアが高くても、この slice を足す必要がある。[AD-Memo](../briefs/2026-10-05/2609.38641.md) の「記憶が要る場面だけを別に集計する」も同型
@@ -419,6 +422,15 @@ P3 側でも同じ形が出ている: 予測誤差の合計は planning の成�
 ## 重要論文リスト
 | 日付 | 論文 | 一言 | brief |
 |---|---|---|---|
+| 2026-10-24 | **Route or Adapt (2610.31095)** | **open-loop の offset が良くても closed-loop は悪化し得る。baseline は退化軌道で低 offset (nuPlan)** | [brief](../briefs/2026-10-24/2610.31095.md) |
+| 2026-10-24 | **2610.30953 (推論と軌道の coupling)** | **推論文の書き換えでは軌道が動かず、カメラ黒塗りでは大きく動く (driving VLA)** | [brief](../briefs/2026-10-24/2610.30953.md) |
+| 2026-10-24 | TerraTransfer++ (2610.30319) | NAVSIM navhard + HUGSim closed-loop で評価。demonstration なしで 59.4 EPDMS | [brief](../briefs/2026-10-24/2610.30319.md) |
+| 2026-10-23 | **Events, Not Pixels (2610.29435)** | **world model の return 誤差の中央値 70% は少数の event step。画像誤差は場所を指さない (Atari・制御)** | [brief](../briefs/2026-10-23/2610.29435.md) |
+| 2026-10-23 | DriveMLP (2610.29676) | 学習手順 (closed-loop IL + 距離報酬 RL) だけで MLP が nuPlan 最良 +3.2・15 倍速 | [brief](../briefs/2026-10-23/2610.29676.md) |
+| 2026-10-22 | **Perceives but Doesn't Brake (2610.28184)** | **見えて説明できるのに減速しない。plan は ego-speed 履歴に支配。guidance で侵入率 58.1 → 14.5%** | [brief](../briefs/2026-10-22/2610.28184.md) |
+| 2026-10-22 | Experience Memory (2610.27714) | closed-loop 評価の統制項目 (resample・token 対照・baseline 監査)。HighwayEnv の限定 | [brief](../briefs/2026-10-22/2610.27714.md) |
+| 2026-10-21 | **Cartender (2610.26390)** | **録画固定で指示だけ差し替える counterfactual 評価。実行不可能な指示の実行率 53.36 → 14.18%** | [brief](../briefs/2026-10-21/2610.26390.md) |
+| 2026-10-20 | GPT-6-Astra (2610.22471) | 汎用 model の embodied 評価。失敗要因は物理状態の検証・不可逆な失敗・進捗保持 | [brief](../briefs/2026-10-20/2610.22471.md) |
 | 2026-10-16 | **Uncertainty-Driven Self-Play (2610.19714)** | **epistemic uncertainty で難シナリオを自動選別。上位 agent の失敗率は下位の 14.8 倍・nuPlan Val14 99.12%** | [brief](../briefs/2026-10-16/2610.19714.md) |
 | 2026-10-16 | SafeDriveVLA (2610.20609) | 危険なナビ指示への追従・拒否を測る conflict-aware benchmark と、world model で従った未来を想像する VLA | [brief](../briefs/2026-10-16/2610.20609.md) |
 | 2026-10-10 | **Dynamic Hazard (2610.12249)** | **環境の確率性で classical と RL の勝者が反転。success は budget とセットで報告 (2D toy 環境)** | [brief](../briefs/2026-10-10/2610.12249.md) |

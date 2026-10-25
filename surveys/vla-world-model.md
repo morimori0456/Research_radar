@@ -1,19 +1,23 @@
 # VLA / World Model / E2E Driving — Living Survey
-最終更新: 2026-10-18
+最終更新: 2026-10-25
 
 ## 一言でいうと
-言語・視覚・行動を 1 つのモデルで扱う **VLA (Vision-Language-Action)** と、世界の遷移を予測する **world model** を end-to-end 自動運転にどう接続するかを追う分野。論点は「どう繋ぐか」→「何で測るか」(W33) →「使い方の順序尺度」(W34) →「そもそも使えるか」(W35) → 勾配が届いていない状態 (W36) → 抽象の層の調達先 (W37) → 遮蔽の測り方 (W39) → 予測が正確でも planning は失敗する (W40) → 検査手順と対策 (W41) → **どの部品を分離して繋ぐか (W42)** と降りてきた。
-**検査は、平均誤差 (MSE) でなく「同じ状態から行動だけ変えた候補の順位」と「行動を変えたとき出力が動くか」で行う (W41)。**動かない原因は観測側 (次の画像の 41.5% は行動を変えても同一) と predictor 側 (ノイズの 1/50〜1/190 しか動かない) に分かれる。対策は、予測 target を制御関連の情報だけに絞る (AVL-JEPA・MiniWAM)、再帰 rollout をやめる (GeoWM・PPWM)、候補評価を一括にする (LiteNWM)。
-**2026-W42 は繋ぎ方の側が揃った: 密結合をやめて分離する。**VLA への world model 統合 4 方式を同条件で比べた結果、行動と別の future 専用 expert を持つ decoupled MoT (Mixture-of-Transformers) が OOD に強く、2D semantic 表現が方式を横断して安定した (What Matters; manipulation 中心)。perception は grounding 専用 backbone に差し替え (GroundingPI)、学習は「状態 policy → dynamics 推定 → 視覚は低次元表現だけ復元」に分解 (Reflex)、運転では「従う/拒否」の判断と action 生成を分け、従った未来を world model で想像してゲートにかける (SafeDriveVLA; 危険指示での衝突 60 → 38)。
-**未決着: RoboJEPA の「imagination error は下流の代理になる」と、「低い誤差が planning を誤らせる」(診断論文) は緊張関係にある。**分離の効果も、運転での閉ループ検証は SafeDriveVLA の Bench2Drive だけで、他は manipulation / humanoid の simulation。
+言語・視覚・行動を 1 つのモデルで扱う **VLA (Vision-Language-Action)** と、世界の遷移を予測する **world model** を end-to-end 自動運転にどう接続するかを追う分野。論点は「どう繋ぐか」→「何で測るか」(W33) →「使い方の順序尺度」(W34) →「そもそも使えるか」(W35) → 勾配が届いていない状態 (W36) → 抽象の層の調達先 (W37) → 遮蔽の測り方 (W39) → 予測が正確でも planning は失敗する (W40) → 検査手順と対策 (W41) → どの部品を分離して繋ぐか (W42) → **画像の誤差でなく下流の結果で測る・作る (W43)** と降りてきた。
+**検査は、平均誤差 (MSE) でなく「同じ状態から行動だけ変えた候補の順位」と「行動を変えたとき出力が動くか」で行う (W41)。W43 はそれを誤差の「場所」に広げた:** return 誤差の中央値 70% は少数の event step に集中し (Events, Not Pixels)、pixel 誤差が 17% 高くても policy は良くなる (DRILL)。圧縮率 (CADRE)・補助 loss (FCP) の評価も画質でなく他車の軌跡誤差で行う。蒸留も行動の誤差で行う (DirectWAM)。**VLA 側も同型: 推論を足しても軌道は動かず (2610.30953)、危険物を説明できても減速しない (Perceives but Doesn't Brake)。**
+繋ぎ方は分離の側 (W42): decoupled な future expert・grounding 専用 perception・判断と生成の分離。対策の型は、予測 target を制御関連の情報だけに絞る・再帰 rollout をやめる・候補評価を一括にする。
+**未決着: RoboJEPA の「imagination error は下流の代理になる」と「低い誤差が planning を誤らせる」は緊張関係にある。W43 の 2 本は後者の側 (推測: 条件は誤差の総量でなく、下流に効く step・次元に誤差が集中しているか)。運転での閉ループ検証は SafeDriveVLA の Bench2Drive だけで、他は manipulation / humanoid / Atari。**
 **中心の問い「world model を *別に立てる* 必然性は何か」への暫定の答え: 生成器としてではなく、行動への応答性と選択の正しさで検査でき、decoupled な部品として足せるときだけ。**R3 は着手しない方針なので、今週分も分類マップ用の在庫。
 
 
 ## 系譜マップ
-- **★ 密結合をやめて分離する —— future expert・perception・判断と生成(2026-W42 の芯)**
-  - **統合方式の比較** — [What Matters](../briefs/2026-10-16/2610.19825.md): VLA × world model を Implicit Future Alignment / Explicit Future Query / MoT Future Expert / External World Predictor に分類して同条件で比較。decoupled な MoT Future Expert が総合で競争的で OOD に強く、2D semantic 表現が安定。action-only より long-horizon・dynamic で改善。**manipulation 中心・運転は未検証**
-  - **perception の分離** — [GroundingPI](../briefs/2026-10-14/2609.39601.md): 点・box を座標 token として語彙内で出す 4B の grounding 専用モデルを VLA/WAM の backbone に差し替える。nuScenes は open-loop L2 0.296 m のみ。**公開有無・推論速度は未確認**
-  - **学習と判断の分離** — [Reflex](../briefs/2026-10-13/2610.12772.md): state policy → dynamics 推定 → 視覚 encoder が dynamics 表現だけ復元 (controller 固定)。[SafeDriveVLA](../briefs/2026-10-16/2610.20609.md): 3 段階の compliance mode を予測して判断と生成を分け、「指示に従った未来」を world model で想像して安全性を判定。**world model の計算コストは未確認**
+- **★ world model と VLA を「下流の結果」で測る・作る —— 画像の誤差から離れる(2026-W43 の芯)**
+  - **world model の測り方** — [Events, Not Pixels](../briefs/2026-10-23/2610.29435.md): return 誤差の中央値 70% は報酬・終了の少数の event step から来て、そこは他の step と同程度にきれいに描けている。画像指標の最大誤差を直してもランダムより効かない (Atari・制御のみ)。[DRILL](../briefs/2026-10-24/2610.30814.md): world model の目的を「次の画像が正確か」から「想像 rollout が policy を改善するか」に替える。pixel 誤差が 17% 高くても policy は良くなる例がある。VWI 重み (policy の訪問頻度 × advantage) は追加 rollout 不要で、IMG は重い
+  - **学習の器の設計** — [CADRE](../briefs/2026-10-23/2610.30129.md): world model 用 video autoencoder の圧縮率。カメラが動く設定 (運転が該当) では空間を強く圧縮するほうが安く、静止カメラで空間 token を粗くすると画質より動きが壊れる。[FCP](../briefs/2026-10-23/2610.29989.md): 推論を変えず、離れた未来 chunk の予測を補助 loss にして直前コピーの shortcut を潰す。**評価は画質でなく他車の軌跡誤差で行う**。[Fréchet Forcing](../briefs/2026-10-21/2610.25666.md): teacher なしで長期 rollout の drift を抑える (36 GPU 時間規模・manipulation とカメラ探索のみ)。[VPM](../briefs/2026-10-22/2610.28594.md): 点 trajectory を補助出力に足してカメラ間の 3D 整合を取る (運転の高速移動・大きな ego motion は未検証)
+  - **蒸留の目的を下流に置く** — [DirectWAM](../briefs/2026-10-22/2610.28122.md): 映像側のノイズをやり直しても行動はほとんど変わらないことに着目し、student の予測した未来を「decode した行動の誤差」で評価して 1 ステップ化。推論 28.0 倍速・LIBERO 平均 97.1%。**manipulation のみ・複数の妥当な軌道がある設定で多様性が保てるかは未確認**
+  - **VLA の結合を診る** — [Perceives but Doesn't Brake](../briefs/2026-10-22/2610.28184.md)・[2610.30953](../briefs/2026-10-24/2610.30953.md): 推論や認識が軌道を支配していない (詳細は planner-evaluation)。[LECDrive](../briefs/2026-10-21/2610.25734.md): VLM に latent token を足し、学習時だけ DINOv3 (視覚特徴)・SAM3 (領域分割)・DepthAnything3 (奥行き) の知識を representation → semantics → geometry の順に移す。**改善幅は abstract に無く、強い E2E planner に対する優位は未確認**
+  - **action head を生成から scoring へ** — [MJev-Spatial](../briefs/2026-10-19/2610.22276.md): 各候補を class とみなし、VLM が持つ attention の Q/K だけでスコアを付けて forward 1 回で決める (追加 parameter なし)。**空間理解の QA のみ・運転の閉ループは未検証**
+  - **構成とデータ** — [GPT-6-Astra](../briefs/2026-10-20/2610.22471.md): 遅い reasoner + 速い controller (π0.5) は「コストは高いが効果的」と報告 (評価レポートで abstract は途中で切れている)。[TerraTransfer++](../briefs/2026-10-24/2610.30319.md): 学習データの出どころを人間ログから self-play に替える
+- **密結合をやめて分離する(2026-W42)**: [What Matters](../briefs/2026-10-16/2610.19825.md) は VLA × world model の 4 方式比較で decoupled な MoT Future Expert が OOD に強く 2D semantic が安定 (manipulation 中心)、[GroundingPI](../briefs/2026-10-14/2609.39601.md) は perception を grounding 専用 4B に差し替え (open-loop L2 のみ)、[Reflex](../briefs/2026-10-13/2610.12772.md) は state policy → dynamics 推定 → 視覚は低次元表現だけ復元 (humanoid sim)、[SafeDriveVLA](../briefs/2026-10-16/2610.20609.md) は従う/拒否の判断と生成を分け、従った未来を world model で想像してゲートにかける (危険指示での衝突 60 → 38・Bench2Drive)
 - **検査は「行動への応答と候補の順位」で行い、target は小さく制御関連にする(2026-W41 の芯)**
   - **診断**
     - [低誤差が planning を誤らせる](../briefs/2026-10-07/2610.05550.md): 誤差を center (全候補共通の偏り) と action-relative response (行動ごとの違いへの反応) に分ける。16 セル中 14 で center が MSE を支配するが、6 セルでは action-relative だけを直した方が順位相関が良い。実際の終端を再 encode すると順位相関 0.193 → 0.631 (PushT) で、順位が落ちる段を特定できる。**設定で結論が変わり、小規模な control task のみ**
@@ -419,6 +423,19 @@
 ## 重要論文リスト
 | 日付 | 論文 | 一言 | brief |
 |---|---|---|---|
+| 2026-10-24 | **DRILL (2610.30814)** | **world model を policy の改善量で学習。pixel 誤差が 17% 高くても policy は良い** | [brief](../briefs/2026-10-24/2610.30814.md) |
+| 2026-10-24 | **2610.30953 (推論と軌道の coupling)** | **推論文の書き換えでは軌道が動かず、カメラ黒塗りでは動く (driving VLA)** | [brief](../briefs/2026-10-24/2610.30953.md) |
+| 2026-10-24 | TerraTransfer++ (2610.30319) | self-play teacher の蒸留で人間ログなしの E2E。NAVSIM navhard 59.4 EPDMS | [brief](../briefs/2026-10-24/2610.30319.md) |
+| 2026-10-23 | **Events, Not Pixels (2610.29435)** | **return 誤差の中央値 70% は少数の event step。画像誤差は場所を指さない (Atari・制御)** | [brief](../briefs/2026-10-23/2610.29435.md) |
+| 2026-10-23 | CADRE (2610.30129) | world model 用 autoencoder の圧縮率。カメラが動くなら空間を強く圧縮するほうが安い | [brief](../briefs/2026-10-23/2610.30129.md) |
+| 2026-10-23 | FCP (2610.29989) | 離れた未来 chunk の補助予測で直前コピーの shortcut を潰す。評価は他車の軌跡誤差 | [brief](../briefs/2026-10-23/2610.29989.md) |
+| 2026-10-22 | **DirectWAM (2610.28122)** | **行動の誤差で蒸留して WAM を 1 ステップ化。28.0 倍速・LIBERO 97.1% (manipulation)** | [brief](../briefs/2026-10-22/2610.28122.md) |
+| 2026-10-22 | **Perceives but Doesn't Brake (2610.28184)** | **見えて説明できるのに減速しない。guidance で侵入率 58.1 → 14.5%** | [brief](../briefs/2026-10-22/2610.28184.md) |
+| 2026-10-22 | VPM (2610.28594) | 点 trajectory の補助出力でカメラ間の 3D 整合 (manipulation 中心) | [brief](../briefs/2026-10-22/2610.28594.md) |
+| 2026-10-21 | LECDrive (2610.25734) | latent token で 3 つの視覚 expert の知識を順に移す VLA 運転 (改善幅は未確認) | [brief](../briefs/2026-10-21/2610.25734.md) |
+| 2026-10-21 | Fréchet Forcing (2610.25666) | teacher なしで長期 streaming world model の drift を抑える (manipulation・36 GPU 時間) | [brief](../briefs/2026-10-21/2610.25666.md) |
+| 2026-10-20 | GPT-6-Astra (2610.22471) | 遅い reasoner + 速い controller の構成を評価。失敗要因は物理状態の検証・不可逆な失敗・進捗保持 | [brief](../briefs/2026-10-20/2610.22471.md) |
+| 2026-10-19 | MJev-Spatial (2610.22276) | attention の Q/K だけで候補を scoring し forward 1 回で決める (空間 QA のみ) | [brief](../briefs/2026-10-19/2610.22276.md) |
 | 2026-10-16 | **What Matters (2610.19825)** | **VLA × world model 4 方式の統一比較。decoupled MoT future expert が OOD に強く、2D semantic が安定 (manipulation 中心)** | [brief](../briefs/2026-10-16/2610.19825.md) |
 | 2026-10-16 | **SafeDriveVLA (2610.20609)** | **従った未来を world model で想像してゲート。危険指示での衝突 60 → 38 (Bench2Drive)** | [brief](../briefs/2026-10-16/2610.20609.md) |
 | 2026-10-14 | GroundingPI (2609.39601) | grounding 専用 4B を VLA の backbone に。nuScenes は open-loop L2 のみ | [brief](../briefs/2026-10-14/2609.39601.md) |

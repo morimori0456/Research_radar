@@ -1,5 +1,5 @@
 # Fast Generative Inference — 推論ステップを削る生成 — Living Survey
-最終更新: 2026-10-18
+最終更新: 2026-10-25
 
 > 新設 (2026-W29)。プランナー (P1) と world model (P3) の双方で「反復 denoising を捨てる」
 > 論文が独立に3本以上溜まり、既存2サーベイのどちらにも収まらなくなったため分離した。
@@ -7,13 +7,16 @@
 ## 一言でいうと
 軌道生成も world model も diffusion / flow matching で書けるようになった一方、車載では **NFE (Number of Function Evaluations; サンプリング時のネットワーク評価回数) がそのままレイテンシ予算**になる。削り方は 7 系統 —— schedule で削る / 学習して削る (one-step drift) / 生成を 1 回にする / 完走しない (early exit) / 本番に載せない / 入力を伸ばさない / 最初から 1 ステップの目的を使う。
 **削る対象は step 数だけでない (W41)**: 再帰 rollout (GeoWM・PPWM は指定 horizon を直接・並列に予測)・候補ごとの重複した encode (LiteNWM は共有 encoding で 128 倍)・renderer (AgentGarten は video model を real-time に蒸留)。step 数の側は FastOPD が 2 ステップで教師の 84%・遅延 78% 減 (W40 の DriftOPD・GFD-OPD に続き、1 ステップ化は蒸留の loss 設計の問題)。
-**2026-W42 は「どのモデルで解くか」を token 単位で削る話が出た**: TokenRouter は 1 token ごとに大小 2 つの LLM を切り替える routing を、モデルごとの subserver と delayed-batching scheduler (少し待って batch をまとめる) で速く serving する (decoding throughput 2.01〜64.15 倍・比較条件の幅が大きく何に対する倍率かは未確認)。LLM の text decoding のみで、運転の低 latency 制約は扱っていない。
+**2026-W43 は、削る対象が「生成そのもの」と「蒸留の目的」に及んだ**: DirectWAM は映像側のノイズをやり直しても行動がほとんど変わらないことから確率的な生成を捨て、decode した行動の誤差で蒸留して 1 ステップ化した (28.0 倍速・manipulation のみ)。MJev-Spatial は VLM の出力を token 生成から候補の scoring に替え、forward 1 回で決める (空間 QA のみ)。CADRE は world model の video autoencoder の圧縮率が latency を決めると示す。**W42 は「どのモデルで解くか」** を token 単位で削る話 (TokenRouter; LLM の text decoding のみ)。
 **捨てても壊れないことは構造で保証できる**のが通奏低音で、削ると失うのは多様性・多峰性、**どこまで削ってよいかは下流タスクが決める。**比較の作法は 2 つ: 少ステップ化には「同じ head を 1 ステップだけ積分したもの」、並列化には「普通の batch」を対照に入れる (W37・W39)。
 
 
 ## 系譜マップ
-- **★ 削る対象が「どのモデルで解くか」へ(2026-W42)**
-  - **モデルを削る (token 単位)** — [TokenRouter](../briefs/2026-10-12/2610.12242.md): request-centric に routing を書き、runtime が LLM ごとの subserver へ非同期に振り分ける。step のずれ (step desynchronization) を許容するのが設計の肝。蒸留の別解 (易しい token だけ小モデル) として P2 の student との比較対象になる。**serving 規模の話で、蒸留 recipe としての知見は無い**
+- **★ 削る対象が「生成そのもの」「蒸留の目的」へ(2026-W43)**
+  - **確率的な生成を捨てる** — [DirectWAM](../briefs/2026-10-22/2610.28122.md): 世界予測つきの policy (WAM) は diffusion の反復が遅く、1 ステップに切ると成功率が落ちる。映像側のノイズをやり直しても行動はほとんど変わらないことと、予測誤差に行動に効くものと効かないものがあることに着目し、student の予測した未来を「そこから decode した行動の誤差」で評価して蒸留する。LIBERO 平均 97.1%。**student が teacher の多様性 (multi-modal な行動) を失う可能性があり、運転のように妥当な軌道が複数ある設定は未確認**
+  - **生成を scoring に替える** — [MJev-Spatial](../briefs/2026-10-19/2610.22276.md): 候補を class とみなし、attention の Q/K だけでスコアを付けて forward 1 回で決める。軌道を離散化した anchor を候補にする使い方が示唆されるが、**運転の閉ループは未検証・候補集合の外は答えられない**
+  - **latency を決める設計** — [CADRE](../briefs/2026-10-23/2610.30129.md): world model 用 autoencoder の圧縮率の置き方。カメラが動く設定では空間を強く圧縮するほうが安い
+- **削る対象が「どのモデルで解くか」へ(2026-W42)**: [TokenRouter](../briefs/2026-10-12/2610.12242.md) は request-centric に routing を書き、runtime が LLM ごとの subserver へ非同期に振り分ける (step desynchronization を許容)。蒸留の別解として P2 の student との比較対象になるが、serving 規模の話で蒸留 recipe としての知見は無い
 - **削る対象が step から「再帰・重複 encode・renderer」へ広がった(2026-W41)**
   - **step を削る** — [FastOPD](../briefs/2026-10-06/2610.02832.md): 大きな VLA を推論 2 ステップの student へ on-policy distillation。教師の 84% の性能で遅延 78% 減。**評価は操作タスクで、運転ではない**
   - **再帰を削る** — [GeoWM](../briefs/2026-10-08/2610.07381.md): 未来の 3D geometry を再帰 rollout なしで直接予測。[PPWM](../briefs/2026-10-08/2610.08627.md): 未来軌道を並列に予測して planning の内側ループを速くする。**並列化の主張には「普通の batch」の対照を (W39 の作法)**
@@ -121,6 +124,9 @@
 ## 重要論文リスト
 | 日付 | 論文 | 一言 | brief |
 |---|---|---|---|
+| 2026-10-23 | CADRE (2610.30129) | world model 用 autoencoder の圧縮率。カメラが動くなら空間を強く圧縮するほうが安い | [brief](../briefs/2026-10-23/2610.30129.md) |
+| 2026-10-22 | **DirectWAM (2610.28122)** | **行動の誤差で蒸留して WAM を 1 ステップ化。28.0 倍速・LIBERO 97.1% (manipulation)** | [brief](../briefs/2026-10-22/2610.28122.md) |
+| 2026-10-19 | MJev-Spatial (2610.22276) | 生成でなく attention の Q/K による候補 scoring。forward 1 回 (空間 QA のみ) | [brief](../briefs/2026-10-19/2610.22276.md) |
 | 2026-10-12 | TokenRouter (2610.12242) | token-level LLM routing の serving system。throughput 2.01〜64.15 倍 (条件は未確認・LLM のみ) | [brief](../briefs/2026-10-12/2610.12242.md) |
 | 2026-10-11 | AgentGarten (2610.12374) | video model を real-time 化する蒸留 (Adversarial Forcing)。状態は simulator (game 環境のみ) | [brief](../briefs/2026-10-11/2610.12374.md) |
 | 2026-10-10 | **LiteNWM (2610.12368)** | **候補軌跡を共有 encoding で一括評価。128 倍高速で proposer 非依存** | [brief](../briefs/2026-10-10/2610.12368.md) |

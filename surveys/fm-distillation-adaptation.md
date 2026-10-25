@@ -1,19 +1,23 @@
 # Foundation Model Distillation & Adaptation — Living Survey
-最終更新: 2026-10-18
+最終更新: 2026-10-25
 
 ## 一言でいうと
-大きな基盤モデルの能力を**小さく・低メモリ・ローカル実行可能**な形に移し、他ドメイン・他機種へ適合させる方法を追う分野。論点は「どう縮めるか」→「何で教えるか」→ 前提の崩壊 (W33) → step length と適合の 4 層 (W34) → 支配変数は loss の外側 (W35) → 監督を当てる範囲 (W36) → data selection (W37) → 配管の交絡 (W39) → 先に決める変数 (W40) → 効く場所に絞る (W41) → **絞る場所を何で決めるか (W42)** と降りてきた。適合の評価軸は「同じ適合精度のときにどれだけ忘れたか」。
-**OPD (on-policy distillation; student 自身の生成物の上で teacher に合わせる蒸留) の recipe は、先に KL の向き (性能) と学習率 (忘却) を決め、on-policy かどうかは後 (W40)。**teacher の大きさより相性が効き、相性は前段 (warm-up SFT・先の RL) で変わる。
-**共通の型は「全体に均一にかけず、効く場所に絞る」。**W41 は絞り方を事前に決めた: 確実に対応する位置の top-16 語彙だけ (Cross-Tokenizer)、出力層の Adam epsilon だけ (Deafening Silence; 忘却 39.4〜67.9% 減)、tail concept に予算 (PASS)、teacher が信頼できる長さで打ち切り (Flash-OPD)。**2026-W42 は、絞る場所を走らせながら測って決める型が出た:** student の surprisal (予測の意外さ) 上位 10% の prefix だけ teacher に聞く (PA1-OPD)、teacher の RL 履歴の 2 つの shift (RL 前後の log-prob 差) の向きが揃う prefix だけ通す (Waypoint-OPD; Qwen3 の 6 設定で最高)、1 段目が張る部分空間を除いた residual gradient 方向だけに 2 段目の LoRA を割り当てる (ReGRA; 同じ総 rank で 2 倍 rank に並ぶ)。いずれも LLM の検証のみ。
-**適合の側は「backbone を凍結し、小さな部分を目的の場面に絞った少量データで合わせる」が揃っている** (Truck VLA / PAGER / OTT3R / FUSEye: 約 22 万 parameter の 0 初期化 adapter、ラベル 25% で全ラベルの 97.6%)。
+大きな基盤モデルの能力を**小さく・低メモリ・ローカル実行可能**な形に移し、他ドメイン・他機種へ適合させる方法を追う分野。論点は「どう縮めるか」→「何で教えるか」→ 前提の崩壊 (W33) → step length と適合 (W34) → 支配変数は loss の外側 (W35) → 監督を当てる範囲 (W36) → data selection (W37) → 配管の交絡 (W39) → 先に決める変数 (W40) → 効く場所に絞る (W41) → 絞る場所を測って決める (W42) → **teacher の教えをどこまで信じるか (W43)** と降りてきた。適合の評価軸は「同じ適合精度のときにどれだけ忘れたか」。
+**OPD (on-policy distillation; student 自身の生成物の上で teacher に合わせる蒸留) の recipe は、先に KL の向き (性能) と学習率 (忘却) を決め、on-policy かどうかは後 (W40)。**teacher の大きさより相性が効く。そのうえで W43 は、teacher を一様に真似ない 4 方向が揃った: 成功していた選択を守る (SPOD)・student に効く箇所だけ強く (AOPD・Nash-MOPD)・合わせる量を最終層の外へ足す (OPTD・OnQ)・特権情報の揺れを平均する (MCPD)。世代を重ねる運用は drift 制約 (HERD)。**いずれも LLM のみの検証で、運転・視覚への移植は「成功」「reward」の定義が先。**
+**共通の型は「全体に均一にかけず、効く場所に絞る」(W41〜W42)。適合の側は「backbone を凍結し、小さな部分を目的の場面に絞った少量データで合わせる」で揃い (Truck VLA / PAGER / OTT3R / FUSEye)、W43 は「どこまで開けるか」に数字が付いた:** 末尾 8 block + embedding で full の 94% を 52% の時間で (AQL-Lite)、新地域は expert 選択より 20 シーンの fine-tuning (Route or Adapt)。
 
 
 ## 系譜マップ
-- **★ 絞る場所を、走らせながら測って決める —— surprisal・shift の向き・残差方向(2026-W42 の芯)**
-  - **student の状態で選ぶ** — [PA1-OPD](../briefs/2026-10-16/2610.19601.md): corpus 上の prefix から student が 1 step だけ sampling し、その先で teacher に聞く (one-step の OPD)。surprisal 上位 10% の root だけ選ぶと KD の cross-entropy 改善幅に 48.85% 上乗せ。推論は不変。**LM pretraining のみ・downstream 未確認**
-  - **teacher の履歴で選ぶ** — [Waypoint-OPD](../briefs/2026-10-17/2610.21601.md): RL 済み teacher の中間 checkpoint を 1 本使い、「初期→中間」と「中間→終点」の shift の向きが prefix ごとに一致するときだけ endpoint shift を student に渡す。追加コストは teacher の scoring 1 回。gate を外す/shuffle すると数学が低下。**数学・コードの LLM のみ・teacher と student が同系統 (Qwen3) の可能性**
-  - **adapter の方向を選ぶ** — [ReGRA](../briefs/2026-10-16/2610.19700.md): 1 段目の LoRA 更新が張る部分空間を task gradient から除き、残差方向で 2 段目を初期化 (直交性 regularizer 付き)。merge 後の推論コスト不変。コード公開済み。**ベンチマーク種別は未確認**
-  - **隣接** — [Reflex](../briefs/2026-10-13/2610.12772.md): 特権情報を持つ state policy の入力表現を、画像だけの encoder が復元する privileged teacher → vision student (87.9% → 85.7%・humanoid sim のみ)。[TokenRouter](../briefs/2026-10-12/2610.12242.md): 蒸留の別解として、易しい token だけ小モデルに任せる routing の serving (LLM decoding のみ)
+- **★ teacher の教えを「どこまで信じるか」—— 守る・重みを付ける・足す・平均する・世代で離れない(2026-W43 の芯。OPD 改良 7 本 + 適合 4 本)**
+  - **守る: 成功していた選択を削らない** — [SPOD](../briefs/2026-10-21/2610.25034.md): OPD には repair (student の弱い判断を直す) と erosion (teacher が好まないが成功していた選択を削る) が同時に働き、序盤は repair が勝って teacher を超え、続けると erosion が勝つ (distillation overshoot)。成功 episode で teacher と衝突する部分を mask し、確率に soft floor を入れる。最終 checkpoint が通常 OPD の途中の最良より 6 設定すべてで良い。**LLM agent のみ・運転では「成功」の定義が先**
+  - **重みを付ける: student に効く箇所だけ強く** — [AOPD](../briefs/2026-10-24/2610.31563.md): teacher の行動を student の下での counterfactual advantage で重み付け。importance weight × 最終 reward で推定でき追加 rollout は不要。数学・コード・MedQA。[Nash-MOPD](../briefs/2026-10-21/2610.26124.md): teacher が複数のときの domain 配分で、改善が最も遅い domain を底上げ (local minimax)。1.5B で step 100 の時点で baseline の最終成績を超える。**どちらも LLM の推論課題のみ**
+  - **足す: 最終層の外** — [OPTD](../briefs/2026-10-22/2610.28048.md): 層間の log-probability の増分も合わせる。正解した応答ほど teacher との層間 transition の KL が小さいという診断が根拠で、gap の回復率が約 75% → 約 90% (3 domain)。**teacher と student が語彙を共有する LLM が前提**。[OnQ](../briefs/2026-10-23/2610.29378.md): 2〜3 bit の量子化の再学習を student 自身の生成の上で行い、候補ごとに forward/reverse KL を切り替える Dynamic KL を使う。2 bit で全 baseline を上回る (8B で +10.26)
+  - **平均する: 特権情報の揺れ** — [MCPD](../briefs/2026-10-24/2610.30880.md): 参照 (正解) の見せ方を変えると teacher の next-token 分布が大きく変わる。複数の部分 view で teacher を評価して平均した分布を target にする (追加の学習 model なし)。数学・科学 reasoning のみ
+  - **世代で離れない** — [HERD](../briefs/2026-10-25/2610.31401.md): 経験を harness (手順書) に溜め、drift 制約付きの蒸留 (anchor 2 つ・中身は abstract から不明) で重みに取り込む。25 stage の task stream で forgetting が最小。LLM agent のみ
+  - **teacher を人間ログから作らない** — [TerraTransfer++](../briefs/2026-10-24/2610.30319.md): self-play の policy を flow-matching の trajectory teacher に蒸留し、凍結 backbone + 軽い adapter に写す。demonstration なしで NAVSIM navhard 59.4 EPDMS (既存最良 57.1)。**sim2real は未確認**
+  - **適合: どこまで開けるか** — [AQL-Lite](../briefs/2026-10-25/2610.30344.md): LoRA を全体に付け、末尾 8 block と embedding も更新して、full の効果の 94% を 52% の時間で得る (言語はアラビア語)。データを選別しないと効果ゼロ、選別で +3.51。[NormTune](../briefs/2026-10-23/2610.29134.md): LoRA が reasoning で負けるのは一部の層の更新量が full より小さすぎるからで、その層を強めると rank-8 で平均 +24%、rank-256 で full 並み。[GCD](../briefs/2026-10-22/2610.25497.md): 正解を context に入れた自分自身を teacher にする (外部 teacher なし)。SFT より新 task の精度が高く、汎用性能の劣化が小さい。[Route or Adapt](../briefs/2026-10-24/2610.31095.md): unseen region では expert 選択より新地域 20 シーンの fine-tuning (元データの replay 付き) で、横ずれ 12.4 → 6.9 m。**言語系は LLM のみ**
+  - **隣接** — [DirectWAM](../briefs/2026-10-22/2610.28122.md): 蒸留の目的を「予測した未来の一致」から「そこから decode した行動の誤差」に置く (推論 28.0 倍速・manipulation のみ)
+- **絞る場所を、走らせながら測って決める(2026-W42)**: [PA1-OPD](../briefs/2026-10-16/2610.19601.md) は student の surprisal (予測の意外さ) 上位 10% の prefix だけ teacher に聞く (KD の改善幅に 48.85% 上乗せ・LM pretraining のみ)、[Waypoint-OPD](../briefs/2026-10-17/2610.21601.md) は RL 前後の 2 つの shift の向きが揃う prefix だけ通す (Qwen3 の 6 設定で最高・数学とコードのみ)、[ReGRA](../briefs/2026-10-16/2610.19700.md) は 1 段目の LoRA が張る部分空間を除いた残差方向に 2 段目を割り当てる (同じ総 rank で 2 倍 rank に並ぶ・コード公開)。隣接: [Reflex](../briefs/2026-10-13/2610.12772.md) は特権 state policy → 視覚 encoder (humanoid sim のみ)、[TokenRouter](../briefs/2026-10-12/2610.12242.md) は易しい token だけ小モデルに任せる routing (LLM decoding のみ)
 - **全体に均一にかけず、効く場所に絞る —— 監督・介入・予算・rollout(2026-W41 の芯)**
   - **監督を絞る** — [Cross-Tokenizer OPD](../briefs/2026-10-08/2610.08448.md): tokenizer の異なる teacher-student で、strict 1:1 に対応する位置の top-16 共通語彙の reverse KL だけで、全語彙と同等の精度。対応の不確かな span を足すと、gradient の向きが strict と食い違って精度が落ちる。**補助 loss を足す前に gradient の cosine を見る。**LLM の推論・code タスクのみ
   - **介入を絞る** — [Deafening Silence](../briefs/2026-10-09/2610.09835.md): 忘却は新データにほぼ出ない token の output embedding に集中する (Adam の正規化が一方向の勾配を全幅の更新に増幅)。出力 projection だけ epsilon を大きくして、安定な 7 設定で忘却 39.4〜67.9% 減。LoRA で released-head を学習すると忘却が 23 倍。**LLM のみ・視覚は未確認**
@@ -468,6 +472,19 @@
 ## 重要論文リスト
 | 日付 | 論文 | 一言 | brief |
 |---|---|---|---|
+| 2026-10-25 | **HERD (2610.31401)** | **drift 制約 + anchor 2 つで再帰的な蒸留の forgetting を抑える。25 stage で forgetting 最小 (LLM agent)** | [brief](../briefs/2026-10-25/2610.31401.md) |
+| 2026-10-25 | **AQL-Lite (2610.30344)** | **LoRA + 末尾 8 block + embedding で full の 94% を 52% の時間で。データ選別 +3.51 (アラビア語 LLM)** | [brief](../briefs/2026-10-25/2610.30344.md) |
+| 2026-10-24 | **AOPD (2610.31563)** | **advantage で teacher の行動に重み付け。追加 rollout 不要 (数学・コード・MedQA)** | [brief](../briefs/2026-10-24/2610.31563.md) |
+| 2026-10-24 | MCPD (2610.30880) | 特権情報の複数の部分 view で teacher を平均し target を安定化 (数学・科学) | [brief](../briefs/2026-10-24/2610.30880.md) |
+| 2026-10-24 | TerraTransfer++ (2610.30319) | self-play teacher の蒸留で demonstration なし。NAVSIM navhard 59.4 EPDMS (sim2real 未確認) | [brief](../briefs/2026-10-24/2610.30319.md) |
+| 2026-10-24 | Route or Adapt (2610.31095) | unseen region は expert 選択より 20 シーン fine-tuning + replay (12.4 → 6.9 m) | [brief](../briefs/2026-10-24/2610.31095.md) |
+| 2026-10-23 | **OnQ (2610.29378)** | **2 bit 量子化の reasoning 回復。on-policy 蒸留 + 候補ごとの Dynamic KL (8B で +10.26)** | [brief](../briefs/2026-10-23/2610.29378.md) |
+| 2026-10-23 | NormTune (2610.29134) | LoRA の更新 norm 不足の層を強化。rank-8 で平均 +24%・rank-256 で full 並み | [brief](../briefs/2026-10-23/2610.29134.md) |
+| 2026-10-22 | **OPTD (2610.28048)** | **層間 log-prob 増分も合わせて gap 回復 約 75% → 約 90% (同語彙の LLM)** | [brief](../briefs/2026-10-22/2610.28048.md) |
+| 2026-10-22 | GCD (2610.25497) | 正解を見た自分を teacher に。SFT より新 task が高く汎用の劣化が小さい | [brief](../briefs/2026-10-22/2610.25497.md) |
+| 2026-10-22 | DirectWAM (2610.28122) | 行動の誤差で蒸留して WAM を 1 ステップ化。28.0 倍速 (manipulation) | [brief](../briefs/2026-10-22/2610.28122.md) |
+| 2026-10-21 | **SPOD (2610.25034)** | **OPD の overshoot の原因は erosion。成功 episode の衝突部分を mask + 確率の下限 (LLM agent)** | [brief](../briefs/2026-10-21/2610.25034.md) |
+| 2026-10-21 | Nash-MOPD (2610.26124) | 複数 teacher の domain 配分を最遅 domain の底上げで決める (数学・コード) | [brief](../briefs/2026-10-21/2610.26124.md) |
 | 2026-10-17 | **Waypoint-OPD (2610.21601)** | **RL 前後の shift を中間 checkpoint で選別して転送。Qwen3 の 6 設定で最高 (数学・コードのみ)** | [brief](../briefs/2026-10-17/2610.21601.md) |
 | 2026-10-16 | ReGRA (2610.19700) | 相補的な 2 段 LoRA。同じ総 rank で 2 倍 rank に並び、merge 後の推論コスト不変 (コード公開) | [brief](../briefs/2026-10-16/2610.19700.md) |
 | 2026-10-16 | PA1-OPD (2610.19601) | surprisal 上位 10% の prefix だけ 1 step on-policy 展開。KD の改善幅に 48.85% 上乗せ (LM pretraining) | [brief](../briefs/2026-10-16/2610.19601.md) |
