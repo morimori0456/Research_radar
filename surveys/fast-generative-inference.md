@@ -1,18 +1,20 @@
 # Fast Generative Inference — 推論ステップを削る生成 — Living Survey
-最終更新: 2026-10-25
+最終更新: 2026-11-01
 
 > 新設 (2026-W29)。プランナー (P1) と world model (P3) の双方で「反復 denoising を捨てる」
 > 論文が独立に3本以上溜まり、既存2サーベイのどちらにも収まらなくなったため分離した。
 
 ## 一言でいうと
 軌道生成も world model も diffusion / flow matching で書けるようになった一方、車載では **NFE (Number of Function Evaluations; サンプリング時のネットワーク評価回数) がそのままレイテンシ予算**になる。削り方は 7 系統 —— schedule で削る / 学習して削る (one-step drift) / 生成を 1 回にする / 完走しない (early exit) / 本番に載せない / 入力を伸ばさない / 最初から 1 ステップの目的を使う。
-**削る対象は step 数だけでない (W41)**: 再帰 rollout (GeoWM・PPWM は指定 horizon を直接・並列に予測)・候補ごとの重複した encode (LiteNWM は共有 encoding で 128 倍)・renderer (AgentGarten は video model を real-time に蒸留)。step 数の側は FastOPD が 2 ステップで教師の 84%・遅延 78% 減 (W40 の DriftOPD・GFD-OPD に続き、1 ステップ化は蒸留の loss 設計の問題)。
-**2026-W43 は、削る対象が「生成そのもの」と「蒸留の目的」に及んだ**: DirectWAM は映像側のノイズをやり直しても行動がほとんど変わらないことから確率的な生成を捨て、decode した行動の誤差で蒸留して 1 ステップ化した (28.0 倍速・manipulation のみ)。MJev-Spatial は VLM の出力を token 生成から候補の scoring に替え、forward 1 回で決める (空間 QA のみ)。CADRE は world model の video autoencoder の圧縮率が latency を決めると示す。**W42 は「どのモデルで解くか」** を token 単位で削る話 (TokenRouter; LLM の text decoding のみ)。
+**削る対象は step 数だけでない:** 再帰 rollout (GeoWM・PPWM)・候補ごとの重複 encode (LiteNWM)・renderer (AgentGarten) (W41)、生成そのもの (DirectWAM・MJev-Spatial) と蒸留の目的 (W43)。**W44 は「どこまで削ってよいか」の境界を測る型が出た:** flow-matching VLA は step 数 K と実行区間 H が結び付き、どちらを減らしてよいかは re-plan の頻度で決まる (Horizon-Depth)・行動分布が Gaussian で足りる policy は最終層の置換だけで最大 2 倍速 (GAR; 分岐する場面は未確認)・予測しやすい latent を作れば world model の学習も推論も安い (Predictable Latents)。
 **捨てても壊れないことは構造で保証できる**のが通奏低音で、削ると失うのは多様性・多峰性、**どこまで削ってよいかは下流タスクが決める。**比較の作法は 2 つ: 少ステップ化には「同じ head を 1 ステップだけ積分したもの」、並列化には「普通の batch」を対照に入れる (W37・W39)。
 
 
 ## 系譜マップ
-- **★ 削る対象が「生成そのもの」「蒸留の目的」へ(2026-W43)**
+- **★ 削る対象が「生成そのもの」「蒸留の目的」へ、そして「どこまで削ってよいか」の境界を測る型(2026-W43〜W44)**
+  - **W44 / step と実行区間の結合** — [Horizon-Depth](../briefs/2026-10-27/2610.32102.md): flow-matching VLA の solver step 数 K と実行区間 H を格子で回し、両者が結び付くことを示す (再学習なしで試せる)。運転は頻繁に re-plan するので「step を減らすと良くなる」側でなく逆側に入る可能性があり、どちらに入るかの測定自体が実験
+  - **W44 / 最終層だけ Gaussian** — [GAR](../briefs/2026-11-01/2610.40271.md): 行動分布が Gaussian でよく近似できる policy は、最終層だけを Gaussian の出力に置換し、対象 state の 0.02% で学習。推論 1 pass・最大 2 倍速で成功率は元に近い。**障害物の左右に分岐する場面で足りるかが未確認**
+  - **W44 / 予測しやすい latent・few-step の蒸留** — [Predictable Latents](../briefs/2026-10-28/2610.34663.md): 時間方向に予測しやすい latent で world model の学習と推論が大幅に安い。[IDM](../briefs/2026-11-01/2610.39633.md): DMD (Distribution Matching Distillation; 多 step の diffusion の出力分布に 1〜数 step の generator を寄せる蒸留) で、student の EMA コピーの特徴で moment を合わせる。1〜2 step の text-to-image で細部 (文字など) を正確に描くため
   - **確率的な生成を捨てる** — [DirectWAM](../briefs/2026-10-22/2610.28122.md): 世界予測つきの policy (WAM) は diffusion の反復が遅く、1 ステップに切ると成功率が落ちる。映像側のノイズをやり直しても行動はほとんど変わらないことと、予測誤差に行動に効くものと効かないものがあることに着目し、student の予測した未来を「そこから decode した行動の誤差」で評価して蒸留する。LIBERO 平均 97.1%。**student が teacher の多様性 (multi-modal な行動) を失う可能性があり、運転のように妥当な軌道が複数ある設定は未確認**
   - **生成を scoring に替える** — [MJev-Spatial](../briefs/2026-10-19/2610.22276.md): 候補を class とみなし、attention の Q/K だけでスコアを付けて forward 1 回で決める。軌道を離散化した anchor を候補にする使い方が示唆されるが、**運転の閉ループは未検証・候補集合の外は答えられない**
   - **latency を決める設計** — [CADRE](../briefs/2026-10-23/2610.30129.md): world model 用 autoencoder の圧縮率の置き方。カメラが動く設定では空間を強く圧縮するほうが安い
@@ -124,6 +126,10 @@
 ## 重要論文リスト
 | 日付 | 論文 | 一言 | brief |
 |---|---|---|---|
+| 2026-11-01 | IDM (2610.39633) | DMD に student の EMA コピーの特徴で moment を合わせる損失。1〜2 step の text-to-image (hf 243) | [brief](../briefs/2026-11-01/2610.39633.md) |
+| 2026-11-01 | GAR (2610.40271) | flow policy の最終層だけ Gaussian に置換。対象 state の 0.02% で学習・最大 2 倍速 | [brief](../briefs/2026-11-01/2610.40271.md) |
+| 2026-10-28 | Predictable Latents (2610.34663) | 時間方向に予測しやすい latent で world model の学習・推論が安くなる | [brief](../briefs/2026-10-28/2610.34663.md) |
+| 2026-10-27 | **Horizon-Depth** (2610.32102) | **flow-matching VLA は solver step 数 K と実行区間 H が結び付く。運転は逆側に入る可能性** | [brief](../briefs/2026-10-27/2610.32102.md) |
 | 2026-10-23 | CADRE (2610.30129) | world model 用 autoencoder の圧縮率。カメラが動くなら空間を強く圧縮するほうが安い | [brief](../briefs/2026-10-23/2610.30129.md) |
 | 2026-10-22 | **DirectWAM (2610.28122)** | **行動の誤差で蒸留して WAM を 1 ステップ化。28.0 倍速・LIBERO 97.1% (manipulation)** | [brief](../briefs/2026-10-22/2610.28122.md) |
 | 2026-10-19 | MJev-Spatial (2610.22276) | 生成でなく attention の Q/K による候補 scoring。forward 1 回 (空間 QA のみ) | [brief](../briefs/2026-10-19/2610.22276.md) |

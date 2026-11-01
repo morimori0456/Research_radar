@@ -1,14 +1,21 @@
 # Foundation Model Distillation & Adaptation — Living Survey
-最終更新: 2026-10-25
+最終更新: 2026-11-01
 
 ## 一言でいうと
-大きな基盤モデルの能力を**小さく・低メモリ・ローカル実行可能**な形に移し、他ドメイン・他機種へ適合させる方法を追う分野。論点は「どう縮めるか」→「何で教えるか」→ 前提の崩壊 (W33) → step length と適合 (W34) → 支配変数は loss の外側 (W35) → 監督を当てる範囲 (W36) → data selection (W37) → 配管の交絡 (W39) → 先に決める変数 (W40) → 効く場所に絞る (W41) → 絞る場所を測って決める (W42) → **teacher の教えをどこまで信じるか (W43)** と降りてきた。適合の評価軸は「同じ適合精度のときにどれだけ忘れたか」。
-**OPD (on-policy distillation; student 自身の生成物の上で teacher に合わせる蒸留) の recipe は、先に KL の向き (性能) と学習率 (忘却) を決め、on-policy かどうかは後 (W40)。**teacher の大きさより相性が効く。そのうえで W43 は、teacher を一様に真似ない 4 方向が揃った: 成功していた選択を守る (SPOD)・student に効く箇所だけ強く (AOPD・Nash-MOPD)・合わせる量を最終層の外へ足す (OPTD・OnQ)・特権情報の揺れを平均する (MCPD)。世代を重ねる運用は drift 制約 (HERD)。**いずれも LLM のみの検証で、運転・視覚への移植は「成功」「reward」の定義が先。**
-**共通の型は「全体に均一にかけず、効く場所に絞る」(W41〜W42)。適合の側は「backbone を凍結し、小さな部分を目的の場面に絞った少量データで合わせる」で揃い (Truck VLA / PAGER / OTT3R / FUSEye)、W43 は「どこまで開けるか」に数字が付いた:** 末尾 8 block + embedding で full の 94% を 52% の時間で (AQL-Lite)、新地域は expert 選択より 20 シーンの fine-tuning (Route or Adapt)。
+大きな基盤モデルの能力を**小さく・低メモリ・ローカル実行可能**な形に移し、他ドメイン・他機種へ適合させる方法を追う分野。適合の評価軸は「同じ適合精度のときにどれだけ忘れたか」で、足元の確認は「更新が丸めで消えていないか」(bf16 のまま fine-tuning すると更新の 79% 以上が消える; fp32 master copy で直る)。
+**蒸留の recipe は「何を先に決めるか」の順序問題で (W40)、OPD (on-policy distillation; student 自身の生成物の上で teacher に合わせる蒸留) は teacher の教えを一様に真似ない方向へ進み (W43: 守る・重みを付ける・足す・平均する)、W44 は gap を loss でなく教材で埋める方向が揃った:** student の rollout (MPOPD)・teacher の軌跡 (CARD)・語句ごとの信頼 (RSKD)・蒸留前の teacher 選び (ESC)。異種 architecture は特徴を揃えず prototype 経由 (RPKD)。
+**適合の型は「backbone を凍結し、更新する箇所を小さく限定し、絞ったデータで合わせる」(W41〜W44):** expert と router だけ (DS-Upcycling)・最終層だけ (GAR)・residual adapter (GRAFT)・末尾 8 block + embedding (AQL-Lite)。**検証の大半は LLM / manipulation で、運転・視覚への移植は「成功」「reward」「分岐する場面」の定義が先。**
 
 
 ## 系譜マップ
-- **★ teacher の教えを「どこまで信じるか」—— 守る・重みを付ける・足す・平均する・世代で離れない(2026-W43 の芯。OPD 改良 7 本 + 適合 4 本)**
+- **★ gap を「教材の作り方」で埋め、適合は「更新する箇所を限定」する —— teacher をどこまで信じるか(2026-W43〜W44 の芯)**
+  - **W44 / student の rollout を直す** — [MPOPD](../briefs/2026-10-30/2610.36477.md): rollout の分布を student と teacher の geometric mixture (確率を重み付きで掛けて正規化した混合) に近い proposal にして、teacher の supervision が不安定な外れ領域を避ける。16 benchmark で OPD 超え、Qwen3-4B-Base の数学 +6.91・生成長 41% 減。**LLM の text 推論のみ**
+  - **W44 / teacher の軌跡を直す** — [CARD](../briefs/2026-10-30/2610.36445.md): 既存の軌跡を RL で「student の分布に合う・筋の通った教える軌跡」に変換 (再 sampling なし)。OOD で特に伸びる。**変換 model の追加 cost は abstract に無い・LLM のみ**
+  - **W44 / 信頼を語句ごとに変える・teacher を蒸留前に選ぶ** — [RSKD](../briefs/2026-10-28/2610.34689.md): 運転 VLM の蒸留で、teacher の予測が正解と意味的に一致する語句は蒸留 loss (JSD)、一致しない語句は正解ラベルの loss を強める (DrivingVQA / LingoQA; closed-loop との関係は未確認)。[ESC](../briefs/2026-10-31/2610.39020.md): 次 token の entropy の系列の一致度 (Entropy Shape Correlation) で、蒸留せずに teacher の良し悪しを予測する
+  - **W44 / 特徴空間を揃えない** — [RPKD](../briefs/2026-10-31/2610.37937.md): ランダムに固定した prototype との類似度で teacher と student を比べる。異種 architecture 向け OFA 比で ImageNet-100 最大 +12.44% (分類のみ・最大値)。[IDM](../briefs/2026-11-01/2610.39633.md): student の EMA コピーの特徴で moment を合わせる DMD (few-step 画像生成の蒸留)
+  - **W44 / 更新する箇所を限定する適合** — [DS-Upcycling](../briefs/2026-11-01/2610.40091.md): ドメインごとに expert と router だけを更新、router の教師は 1 ドメイン 256 例で routing accuracy 90-98% (LLM のみ)。[GAR](../briefs/2026-11-01/2610.40271.md): flow policy の最終層だけを Gaussian に置換、対象 state の 0.02% で学習・最大 2 倍速 (障害物の左右に分岐する場面で足りるかは未確認)。[GRAFT](../briefs/2026-10-29/2610.36507.md): 凍結 backbone に residual adapter、元ドメインでは補正ゼロの regularization、privileged な地形情報から搭載 depth へ蒸留。[GIFT](../briefs/2026-10-28/2610.35374.md): Householder reflection で表現の幾何を保つ PEFT、未知天候への汎化
+  - **W44 / 学習時だけの teacher・出力形式を変える適合** — [Ground-to-Satellite](../briefs/2026-10-29/2610.37021.md): 推論時に無い地上写真を teacher に衛星 embedding の分類器を蒸留、時間・地理の shift で差が広がる。[LayerEditor](../briefs/2026-10-26/2610.24738.md): 出力形式を変える適合で、凍結した元 model を teacher に完成画像と再構成画像の両方へ prior を蒸留 (abstract に数値なし)。[Reuse, Don't Retrain](../briefs/2026-10-27/2610.32566.md): 凍結した大 teacher の patch 特徴合わせだけで同サイズの公開 model を mIoU 2〜3 点上回る (事前学習コストの約 0.5%・衛星画像)
+  - **W44 / 足元の確認: dtype** — [fp32 master copy](../briefs/2026-10-27/2610.31859.md): bf16 のまま full-weight fine-tuning すると weight の 1/512 未満の更新が丸めで消え (LIBERO で 79% 以上)、12 codebase 中 9 が該当。fp32 copy で SmolVLA 4.3 → 49.3%・π0.5 5.1 → 80.9%。**適合が効かない原因を手法に帰す前に確認する項目**
   - **守る: 成功していた選択を削らない** — [SPOD](../briefs/2026-10-21/2610.25034.md): OPD には repair (student の弱い判断を直す) と erosion (teacher が好まないが成功していた選択を削る) が同時に働き、序盤は repair が勝って teacher を超え、続けると erosion が勝つ (distillation overshoot)。成功 episode で teacher と衝突する部分を mask し、確率に soft floor を入れる。最終 checkpoint が通常 OPD の途中の最良より 6 設定すべてで良い。**LLM agent のみ・運転では「成功」の定義が先**
   - **重みを付ける: student に効く箇所だけ強く** — [AOPD](../briefs/2026-10-24/2610.31563.md): teacher の行動を student の下での counterfactual advantage で重み付け。importance weight × 最終 reward で推定でき追加 rollout は不要。数学・コード・MedQA。[Nash-MOPD](../briefs/2026-10-21/2610.26124.md): teacher が複数のときの domain 配分で、改善が最も遅い domain を底上げ (local minimax)。1.5B で step 100 の時点で baseline の最終成績を超える。**どちらも LLM の推論課題のみ**
   - **足す: 最終層の外** — [OPTD](../briefs/2026-10-22/2610.28048.md): 層間の log-probability の増分も合わせる。正解した応答ほど teacher との層間 transition の KL が小さいという診断が根拠で、gap の回復率が約 75% → 約 90% (3 domain)。**teacher と student が語彙を共有する LLM が前提**。[OnQ](../briefs/2026-10-23/2610.29378.md): 2〜3 bit の量子化の再学習を student 自身の生成の上で行い、候補ごとに forward/reverse KL を切り替える Dynamic KL を使う。2 bit で全 baseline を上回る (8B で +10.26)
@@ -472,6 +479,19 @@
 ## 重要論文リスト
 | 日付 | 論文 | 一言 | brief |
 |---|---|---|---|
+| 2026-11-01 | DS-Upcycling (2610.40091) | ドメインごとに expert と router だけを更新する少データ適合。router の教師は 256 例・routing accuracy 90-98% (LLM のみ) | [brief](../briefs/2026-11-01/2610.40091.md) |
+| 2026-11-01 | GAR (2610.40271) | flow policy の最終層だけを Gaussian に置換。対象 state の 0.02% で学習・最大 2 倍速 (分岐場面は未確認) | [brief](../briefs/2026-11-01/2610.40271.md) |
+| 2026-10-31 | **ESC** (2610.39020) | **次 token の entropy の系列の一致度で、蒸留前に teacher を選ぶ** | [brief](../briefs/2026-10-31/2610.39020.md) |
+| 2026-10-31 | RPKD (2610.37937) | ランダム prototype を共通の物差しに異種 architecture を蒸留。OFA 比 ImageNet-100 で最大 +12.44% (分類のみ) | [brief](../briefs/2026-10-31/2610.37937.md) |
+| 2026-10-30 | **MPOPD** (2610.36477) | **rollout を student と teacher の geometric mixture に寄せる。Qwen3-4B-Base 数学 +6.91・生成長 41% 減 (LLM のみ)** | [brief](../briefs/2026-10-30/2610.36477.md) |
+| 2026-10-30 | CARD (2610.36445) | teacher の軌跡を RL で student に学びやすい形へ変換してから蒸留 (LLM のみ) | [brief](../briefs/2026-10-30/2610.36445.md) |
+| 2026-10-29 | GRAFT (2610.36507) | 凍結 backbone + residual adapter。元ドメインでは補正ゼロの regularization・privileged 情報から搭載 depth へ蒸留 | [brief](../briefs/2026-10-29/2610.36507.md) |
+| 2026-10-29 | Ground-to-Satellite (2610.37021) | 学習時のみの地上写真 teacher で衛星 embedding の分類器を蒸留。shift 下で差が広がる | [brief](../briefs/2026-10-29/2610.37021.md) |
+| 2026-10-28 | **RSKD** (2610.34689) | **運転 VLM の蒸留で teacher の整合度が高い語句は JSD、低い語句は正解ラベルを強める (DrivingVQA / LingoQA)** | [brief](../briefs/2026-10-28/2610.34689.md) |
+| 2026-10-28 | GIFT (2610.35374) | Householder reflection で表現の幾何を保つ PEFT。未知天候への汎化 | [brief](../briefs/2026-10-28/2610.35374.md) |
+| 2026-10-27 | **fp32 master copy** (2610.31859) | **bf16 のままの fine-tuning は更新の 79% 以上が消える。fp32 copy で SmolVLA 4.3 → 49.3% (LIBERO-Object)** | [brief](../briefs/2026-10-27/2610.31859.md) |
+| 2026-10-27 | Reuse, Don't Retrain (2610.32566) | 凍結 teacher の patch 特徴合わせだけで同サイズの公開 model を mIoU 2〜3 点上回る (事前学習の約 0.5%・衛星画像) | [brief](../briefs/2026-10-27/2610.32566.md) |
+| 2026-10-26 | LayerEditor (2610.24738) | 出力形式を変える適合で、凍結した元 model を teacher に完成画像と再構成画像の両方へ蒸留 (画像編集・数値なし) | [brief](../briefs/2026-10-26/2610.24738.md) |
 | 2026-10-25 | **HERD (2610.31401)** | **drift 制約 + anchor 2 つで再帰的な蒸留の forgetting を抑える。25 stage で forgetting 最小 (LLM agent)** | [brief](../briefs/2026-10-25/2610.31401.md) |
 | 2026-10-25 | **AQL-Lite (2610.30344)** | **LoRA + 末尾 8 block + embedding で full の 94% を 52% の時間で。データ選別 +3.51 (アラビア語 LLM)** | [brief](../briefs/2026-10-25/2610.30344.md) |
 | 2026-10-24 | **AOPD (2610.31563)** | **advantage で teacher の行動に重み付け。追加 rollout 不要 (数学・コード・MedQA)** | [brief](../briefs/2026-10-24/2610.31563.md) |

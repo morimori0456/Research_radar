@@ -1,16 +1,18 @@
 # VLA / World Model / E2E Driving — Living Survey
-最終更新: 2026-10-25
+最終更新: 2026-11-01
 
 ## 一言でいうと
-言語・視覚・行動を 1 つのモデルで扱う **VLA (Vision-Language-Action)** と、世界の遷移を予測する **world model** を end-to-end 自動運転にどう接続するかを追う分野。論点は「どう繋ぐか」→「何で測るか」(W33) →「使い方の順序尺度」(W34) →「そもそも使えるか」(W35) → 勾配が届いていない状態 (W36) → 抽象の層の調達先 (W37) → 遮蔽の測り方 (W39) → 予測が正確でも planning は失敗する (W40) → 検査手順と対策 (W41) → どの部品を分離して繋ぐか (W42) → **画像の誤差でなく下流の結果で測る・作る (W43)** と降りてきた。
-**検査は、平均誤差 (MSE) でなく「同じ状態から行動だけ変えた候補の順位」と「行動を変えたとき出力が動くか」で行う (W41)。W43 はそれを誤差の「場所」に広げた:** return 誤差の中央値 70% は少数の event step に集中し (Events, Not Pixels)、pixel 誤差が 17% 高くても policy は良くなる (DRILL)。圧縮率 (CADRE)・補助 loss (FCP) の評価も画質でなく他車の軌跡誤差で行う。蒸留も行動の誤差で行う (DirectWAM)。**VLA 側も同型: 推論を足しても軌道は動かず (2610.30953)、危険物を説明できても減速しない (Perceives but Doesn't Brake)。**
-繋ぎ方は分離の側 (W42): decoupled な future expert・grounding 専用 perception・判断と生成の分離。対策の型は、予測 target を制御関連の情報だけに絞る・再帰 rollout をやめる・候補評価を一括にする。
-**未決着: RoboJEPA の「imagination error は下流の代理になる」と「低い誤差が planning を誤らせる」は緊張関係にある。W43 の 2 本は後者の側 (推測: 条件は誤差の総量でなく、下流に効く step・次元に誤差が集中しているか)。運転での閉ループ検証は SafeDriveVLA の Bench2Drive だけで、他は manipulation / humanoid / Atari。**
-**中心の問い「world model を *別に立てる* 必然性は何か」への暫定の答え: 生成器としてではなく、行動への応答性と選択の正しさで検査でき、decoupled な部品として足せるときだけ。**R3 は着手しない方針なので、今週分も分類マップ用の在庫。
+言語・視覚・行動を 1 つのモデルで扱う **VLA (Vision-Language-Action)** と、世界の遷移を予測する **world model** を end-to-end 自動運転にどう接続するかを追う分野。検査は平均誤差でなく「行動だけ変えた候補の順位」「行動を変えたとき出力が動くか」「下流の結果」で行う (W41〜W43)。
+**W44 の論点は「学習時だけ足す構造」と「推論と行動の食い違い」:** 将来予測を補助 loss にする JAM・MoGAP (推論には持ち込まない) に対し、SaiVLA-JEPA は paired 10,030 組で将来 supervision の gain を検出できず、効いたのは JEPA 特徴を入れること。推論と行動は CoC-CFG (推論時: step ごとに推論の効かせ方を選ぶ) と CoRAct (学習時: 推論と行動の一致を reward) が両側から扱う。
+**未決着: JAM と SaiVLA-JEPA は学習予算・特徴の時間情報の違いで両立しうる。運転での検証は 0 (全部 manipulation / navigation)。「world model を *別に立てる* 必然性」への暫定の答えは「行動への応答性と選択の正しさで検査でき、decoupled な部品として足せるときだけ」(W43) から動かない。R3 は着手しない方針なので在庫。**
 
 
 ## 系譜マップ
-- **★ world model と VLA を「下流の結果」で測る・作る —— 画像の誤差から離れる(2026-W43 の芯)**
+- **★ 「学習時だけ足す構造」は効くのか・推論と行動をどう揃えるか —— 下流の結果で測る・作る(2026-W43〜W44 の芯)**
+  - **W44 / 将来予測を補助 loss にする: 賛否が割れた** — [JAM](../briefs/2026-10-29/2610.37219.md): 凍結 encoder で符号化した将来の観測を予測する foresight loss (head は推論で捨てる) だけで、LIBERO-Plus 55.3 → 64.5・学習 FLOPs 推定 73% 減。[MoGAP](../briefs/2026-10-30/2610.36624.md): 動く領域に強いノイズを乗せた予測を学習時だけの補助経路にして GR-1 で 38.8 → 47.5%・52.3 → 62.3%。**一方** [SaiVLA-JEPA](../briefs/2026-10-31/2610.38508.md): JEPA 特徴を入れる効果は大きい (71.6 → 約 82.5%) が、将来の supervision は paired 10,030 組で検出可能な gain なし (評価した学習予算の限定付き)。全部 manipulation
+  - **W44 / 推論と行動を揃える** — [CoC-CFG](../briefs/2026-10-31/2610.40002.md): reasoning 付き VLA で、推論あり / なしの予測の差を重みで増幅する classifier-free guidance の重みを、行動生成の step ごとに「1 step だけ変えて最後まで生成した value」で選ぶ (再学習なし)。運転 sim 252 → 262 / 300 passed・Waymo の E2E benchmark hidden test 8.135 (既存 8.079; rule-based 変換の寄与を含む)。[CoRAct](../briefs/2026-11-01/2610.39543.md): 推論が述べた動きと行動後の予測の一致を reward に、noise 分布を GRPO 系で更新 (manipulation のみ)
+  - **W44 / latent の設計** — [DriveUniTok](../briefs/2026-10-28/2610.35044.md): 画像・LiDAR depth・自車軌道を 1 つの連続 latent に統合した tokenizer。NAVSIM の RL 後 PDMS 91.54 (WAM 系で最高)。[Predictable Latents](../briefs/2026-10-28/2610.34663.md): 時間方向に予測しやすい latent で world model の学習・推論が安くなる。[Dwell](../briefs/2026-10-30/2610.36925.md): VLM を latent の world model 兼 policy にし、再構成なしの imagination から学ぶ。[RepresentNav](../briefs/2026-10-27/2610.31762.md): 全層特徴の選択と JEPA 型の未来表現予測を policy の内側に持つ navigation model (衝突 1/4)
+  - **W44 / planning head の分け方・配備** — [CLAP-AD](../briefs/2026-10-29/2610.36079.md): 経路は模倣、速度は候補を安全制約の learned scoring で選ぶ後付け head。Bench2Drive-Speed の Speed-Adherence 82.53 (最強 baseline +12.9)・NAVSIM v2 EPDMS +6.1。[Horizon-Depth](../briefs/2026-10-27/2610.32102.md): flow-matching VLA は solver step 数 K と実行区間 H が結び付く (運転は re-plan が頻繁で逆側に入る可能性)。[QbD-VLA](../briefs/2026-11-01/2610.38661.md): 短い closed-loop の成功率で VLA の量子化 bit 幅を決める。simulation で選んだ割り当てが実機の π0.5 で失敗
   - **world model の測り方** — [Events, Not Pixels](../briefs/2026-10-23/2610.29435.md): return 誤差の中央値 70% は報酬・終了の少数の event step から来て、そこは他の step と同程度にきれいに描けている。画像指標の最大誤差を直してもランダムより効かない (Atari・制御のみ)。[DRILL](../briefs/2026-10-24/2610.30814.md): world model の目的を「次の画像が正確か」から「想像 rollout が policy を改善するか」に替える。pixel 誤差が 17% 高くても policy は良くなる例がある。VWI 重み (policy の訪問頻度 × advantage) は追加 rollout 不要で、IMG は重い
   - **学習の器の設計** — [CADRE](../briefs/2026-10-23/2610.30129.md): world model 用 video autoencoder の圧縮率。カメラが動く設定 (運転が該当) では空間を強く圧縮するほうが安く、静止カメラで空間 token を粗くすると画質より動きが壊れる。[FCP](../briefs/2026-10-23/2610.29989.md): 推論を変えず、離れた未来 chunk の予測を補助 loss にして直前コピーの shortcut を潰す。**評価は画質でなく他車の軌跡誤差で行う**。[Fréchet Forcing](../briefs/2026-10-21/2610.25666.md): teacher なしで長期 rollout の drift を抑える (36 GPU 時間規模・manipulation とカメラ探索のみ)。[VPM](../briefs/2026-10-22/2610.28594.md): 点 trajectory を補助出力に足してカメラ間の 3D 整合を取る (運転の高速移動・大きな ego motion は未検証)
   - **蒸留の目的を下流に置く** — [DirectWAM](../briefs/2026-10-22/2610.28122.md): 映像側のノイズをやり直しても行動はほとんど変わらないことに着目し、student の予測した未来を「decode した行動の誤差」で評価して 1 ステップ化。推論 28.0 倍速・LIBERO 平均 97.1%。**manipulation のみ・複数の妥当な軌道がある設定で多様性が保てるかは未確認**
@@ -423,6 +425,18 @@
 ## 重要論文リスト
 | 日付 | 論文 | 一言 | brief |
 |---|---|---|---|
+| 2026-11-01 | CoRAct (2610.39543) | 推論が述べた動きと行動後の予測の一致を reward に noise 分布を更新 (manipulation のみ) | [brief](../briefs/2026-11-01/2610.39543.md) |
+| 2026-11-01 | QbD-VLA (2610.38661) | 短い closed-loop の成功率で VLA の量子化 bit 幅を決める。simulation の割り当てが実機で失敗 | [brief](../briefs/2026-11-01/2610.38661.md) |
+| 2026-10-31 | **CoC-CFG** (2610.40002) | **推論の効かせ方を行動生成の step ごとに選ぶ guidance。運転 sim 252 → 262 / 300・再学習なし** | [brief](../briefs/2026-10-31/2610.40002.md) |
+| 2026-10-31 | **SaiVLA-JEPA** (2610.38508) | **将来予測の補助 loss は paired 10,030 組で検出可能な gain なし。効いたのは JEPA 特徴を入れること (71.6 → 約 82.5%)** | [brief](../briefs/2026-10-31/2610.38508.md) |
+| 2026-10-30 | MoGAP (2610.36624) | 動く領域に強いノイズの予測を学習時の補助経路に。GR-1 で 38.8 → 47.5% (manipulation のみ) | [brief](../briefs/2026-10-30/2610.36624.md) |
+| 2026-10-30 | Dwell (2610.36925) | VLM を latent の world model 兼 policy にし、再構成なしの imagination から学ぶ | [brief](../briefs/2026-10-30/2610.36925.md) |
+| 2026-10-29 | **JAM** (2610.37219) | **foresight loss だけで WAM に並ぶ。LIBERO-Plus 55.3 → 64.5・学習 FLOPs 推定 73% 減 (manipulation のみ)** | [brief](../briefs/2026-10-29/2610.37219.md) |
+| 2026-10-29 | CLAP-AD (2610.36079) | 経路は模倣、速度は安全制約の learned scoring で選ぶ後付け head。Speed-Adherence 82.53 | [brief](../briefs/2026-10-29/2610.36079.md) |
+| 2026-10-28 | DriveUniTok (2610.35044) | 画像・depth・自車軌道を 1 つの latent に統合した tokenizer。NAVSIM RL 後 PDMS 91.54 | [brief](../briefs/2026-10-28/2610.35044.md) |
+| 2026-10-28 | Predictable Latents (2610.34663) | 時間方向に予測しやすい latent で world model の学習・推論が安くなる | [brief](../briefs/2026-10-28/2610.34663.md) |
+| 2026-10-27 | Horizon-Depth (2610.32102) | flow-matching VLA は solver step 数 K と実行区間 H が結び付く。再学習なしで格子を回せる | [brief](../briefs/2026-10-27/2610.32102.md) |
+| 2026-10-27 | RepresentNav (2610.31762) | 全層特徴の選択と JEPA 型の未来表現予測を policy の内側に持つ navigation model | [brief](../briefs/2026-10-27/2610.31762.md) |
 | 2026-10-24 | **DRILL (2610.30814)** | **world model を policy の改善量で学習。pixel 誤差が 17% 高くても policy は良い** | [brief](../briefs/2026-10-24/2610.30814.md) |
 | 2026-10-24 | **2610.30953 (推論と軌道の coupling)** | **推論文の書き換えでは軌道が動かず、カメラ黒塗りでは動く (driving VLA)** | [brief](../briefs/2026-10-24/2610.30953.md) |
 | 2026-10-24 | TerraTransfer++ (2610.30319) | self-play teacher の蒸留で人間ログなしの E2E。NAVSIM navhard 59.4 EPDMS | [brief](../briefs/2026-10-24/2610.30319.md) |

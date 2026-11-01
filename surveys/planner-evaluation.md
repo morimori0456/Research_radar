@@ -1,14 +1,18 @@
 # Planner Evaluation & Safe Motion Planning — Living Survey
-最終更新: 2026-10-25
+最終更新: 2026-11-01
 
 ## 一言でいうと
-自動運転プランナを「衝突率」一本で測る時代を終わらせ、**過保守も含めて保証付きで**測る評価を追う分野。論点は 採点 → 診断 → 定義の破綻 (W33) → 保証の天井 (W34) → 何を代わりに測るか (W35) → 集約指標は劣化を報告しない (W36) → 指標を防衛する 2 つの質問 (W37) → 判定を分解する (W39) → planner の「段」に帰属させる (W40) → 平均を取る前に切る (W41) → 切る軸をモデルの不確実性に選ばせる (W42) → **片方の要因だけ変えて出力が動くかを測る (W43)** と降りてきた。
-**切り口は 5 つ (時間・場面・環境の確率性・データの支持・epistemic uncertainty = モデルの知識不足による不確実性) で、比較には 切り口 × 段 × 後処理 を明記する (W42 まで)。W43 は切るのでなく「対」にする型が 5 本揃った:** 指示だけ差し替え (Cartender)・危険物の距離だけ振る (Perceives but Doesn't Brake; 縦方向の plan は ego-speed 履歴に支配される)・推論文の書き換え vs カメラ黒塗り (2610.30953)・event 時刻だけ実データに差し替え (Events, Not Pixels; return 誤差の中央値 70% が少数の event step)・expert 選択 vs 少数シーンの fine-tuning (Route or Adapt)。共通の結論は **「指標の数字が改善しても、本物かは対で確かめる」**: open-loop が上がって closed-loop が下がる (nuPlan)、退化した軌道で offset が低く出る。
-言語指示を持つ planner では、評価軸に「危険な指示への対応」(SafeDriveVLA) と「指示が実際に効いているか」(Cartender) が加わる。P3 側も同型で、予測誤差の合計は planning の成否を説明しない (DRPE・Events, Not Pixels)。**R1 の「衝突率は判断の質を報告しない」は裏付けが増えた。足りないのは材料ではなく、それを測る 2D toy である。**
+自動運転プランナを「衝突率」一本で測る時代を終わらせ、**過保守も含めて保証付きで**測る評価を追う分野。切り口は 時間・場面・環境の確率性・データの支持・epistemic uncertainty (モデルの知識不足による不確実性) で、比較には 切り口 × 段 × 後処理 を明記する (W42)。
+**W43 は「片方の要因だけ変えて出力が動くか」の対、W44 は「失敗を原因に沿って分ける」:** 衝突の 95.9% が planning 失敗 (2610.35448)・ranker の誤りの 53% が選択 (SAGE)・失敗の 2 秒前を内部表現から予告 (SRP; ROC-AUC 0.833)・simulator の結果から言える主張を component ごとに明示 (Reality Gap; 235 本の整理)。評価 set は planner ごとに作る (他 planner 用の場面では効果が 18.3 → 6.7 に縮む)。
+**R1 の「衝突率は判断の質を報告しない」の裏付けは増え続けているが、足りないのは材料でなく、それを測る 2D toy と図 1 枚である。**
 
 
 ## 系譜マップ
-- **★ 「片方の要因だけ変えて、出力が動くか」で測る —— 対の検査と、指標の改善を信じてよいかの点検(2026-W43 の芯。R1 の「隣に置く量」と同型)**
+- **★ 失敗を原因に沿って分ける + 「片方の要因だけ変えて、出力が動くか」(2026-W43〜W44 の芯。R1 の「隣に置く量」と同型)**
+  - **W44 / 失敗の原因に分ける** — [2610.35448](../briefs/2026-10-28/2610.35448.md): NeuroNCAP で DiffusionDrive の衝突の 95.9% は「見えているのに避けられない」planning の失敗。planning head から蒸留した代理 model で危険場面を探し (50 場面)、fine-tuning で closed-loop 衝突率が SparseDrive 28.0 → 12.2%・DiffusionDrive 37.5 → 19.2%。他 planner 用の場面では 18.3 点の低下が 6.7 点に縮む。[SAGE](../briefs/2026-10-27/2610.31835.md): 工事区間で、候補集合に良い軌道があるのに選べない分 (selection regret; ranker の誤りの 53%) を分けて測る。[DriveMind](../briefs/2026-10-27/2610.32069.md): 複数の解釈を保持する belief tracking で Bench2Drive の Driving Score 68.50 → 81.37、改善は曖昧な場面に集中 (推論 cost は abstract に無い)
+  - **W44 / 失敗を事前に読む** — [SRP](../briefs/2026-10-29/2610.37299.md): 凍結した policy の actor / ego / map の表現から linear probe で数秒先の失敗を警告。DriveTransformer で 2 秒先 ROC-AUC 0.833 (軌道のぶれ 0.715)・overhead 2.67%。「何秒前に予告できたか」を評価軸に足せる。simulation のみ・内部表現へのアクセスが前提
+  - **W44 / 対の scenario・主張と証拠** — [OSMA-Bench](../briefs/2026-10-28/2610.34674.md): 障害物の種類だけ変えた対の scenario で、安全性の意味が余白と速度に出るかを SSI で測る (household robot navigation)。[Reality Gap](../briefs/2026-10-31/2610.38628.md): ADS test の reality gap を 235 本の主張と証拠で整理。simulator の結果から何を主張できるかを component 単位で明示せよと求める。「差 → verdict」の因果は未確立
+  - **W44 / 不確実性を余白に渡す** — [KEPT](../briefs/2026-10-29/2610.37217.md): conformal 余白を劣化度で条件づけ、制動距離の条件と合わせて planner に渡す。核心は coverage の維持で、到達率の改善は信頼区間が 0 を含む。[eCoMAE](../briefs/2026-11-01/2610.39958.md): VRU 予測の確信度を観測量に揃える pretraining (OOD accuracy +0.01 程度・planner への効果は未確認)。[ICNN](../briefs/2026-10-31/2610.38939.md): 凸に制約した network の安全・快適性 cost を LP で埋め込む lane change planner
   - **入力の対** — [Perceives but Doesn't Brake](../briefs/2026-10-22/2610.28184.md): 危険物の距離だけ / ego-speed 履歴だけを変えた対のシナリオで、危険は表現に符号化され軌道 generator も減速できるのに、縦方向の plan が履歴に支配され距離に弱くしか反応しないことを示す (軌道の誤差では見えない)。frozen な flow-matching sampler に hazard-conditioned guidance を足すと侵入率 58.1 → 14.5%。**正確な障害物の幾何が与えられた条件の数値**。[Cartender](../briefs/2026-10-21/2610.26390.md): 録画を固定して指示だけ差し替える。VLM に「選ばなかった運転」を提案させて負例を作り、実行不可能な指示を実行する率 53.36 → 14.18%。**RFS (Rater Feedback Score) は Waymo の基準に依存**。[2610.30953](../briefs/2026-10-24/2610.30953.md): driving VLA の推論文を書き換えても軌道はほとんど変わらないが、カメラ画像を黒塗りすると大きく変わる = 説明と挙動は弱くしか結びつかない
   - **指標の改善を信じてよいか** — [Route or Adapt](../briefs/2026-10-24/2610.31095.md): nuPlan で open-loop の offset が良くなっても closed-loop が悪化し、2 つの baseline は退化した軌道で低い offset を出していた → 点検項目は「open-loop と closed-loop を並べる」「軌道が静止・直線に潰れていないか」。[Experience Memory](../briefs/2026-10-22/2610.27714.md): closed-loop 評価の統制項目 (resample した warmup pool・token 数を揃えた無関係な入力の対照・再実装の監査)。**HighwayEnv + gpt-4o-mini の限定で、評価の作法として読む**
   - **評価器 (simulator / world model) の誤差の場所** — [Events, Not Pixels](../briefs/2026-10-23/2610.29435.md): 想像した遷移を実際の遷移に差し替えて return 誤差の減り方を見る診断。報酬・終了の少数の event step が誤差の中央値 70% を占め、画像誤差が最大の step を直してもランダムより効かない (Atari-100k の 44 組中 39 組)。**Atari と制御 task のみ・運転での再現は未確認**
@@ -422,6 +426,15 @@
 ## 重要論文リスト
 | 日付 | 論文 | 一言 | brief |
 |---|---|---|---|
+| 2026-11-01 | eCoMAE (2610.39958) | VRU 予測の確信度を観測量に揃える pretraining。診断として使う価値が大きい (精度差は小さい) | [brief](../briefs/2026-11-01/2610.39958.md) |
+| 2026-10-31 | **Reality Gap** (2610.38628) | **ADS test の reality gap を 235 本の主張と証拠で整理。simulator の結果から言える主張を component 単位で明示** | [brief](../briefs/2026-10-31/2610.38628.md) |
+| 2026-10-31 | ICNN (2610.38939) | 凸制約 network の安全・快適性 cost を LP で埋め込む lane change planner | [brief](../briefs/2026-10-31/2610.38939.md) |
+| 2026-10-29 | **SRP** (2610.37299) | **policy の内部表現から linear probe で失敗を予告。2 秒先 ROC-AUC 0.833 (軌道のぶれ 0.715)・overhead 2.67% (Bench2Drive)** | [brief](../briefs/2026-10-29/2610.37299.md) |
+| 2026-10-29 | KEPT (2610.37217) | conformal keepout を劣化度で条件づけ、制動距離と組み合わせて planner に渡す。核心は coverage の維持 | [brief](../briefs/2026-10-29/2610.37217.md) |
+| 2026-10-28 | **Model-aware scenes** (2610.35448) | **衝突の 95.9% が planning 失敗。planner 専用の危険場面で fine-tuning し衝突率が約半減 (NeuroNCAP)。他 planner 用では効果が縮む** | [brief](../briefs/2026-10-28/2610.35448.md) |
+| 2026-10-28 | OSMA-Bench (2610.34674) | 障害物の種類だけ変えた対 scenario で安全性の意味が余白・速度に出るかを SSI で測る (household robot) | [brief](../briefs/2026-10-28/2610.34674.md) |
+| 2026-10-27 | DriveMind (2610.32069) | 複数の解釈を保持する belief tracking。Bench2Drive の Driving Score 68.50 → 81.37・曖昧な場面で差 | [brief](../briefs/2026-10-27/2610.32069.md) |
+| 2026-10-27 | SAGE (2610.31835) | 工事区間で selection regret (候補にあるのに選べない分) を分けて測る。ranker の誤りの 53% | [brief](../briefs/2026-10-27/2610.31835.md) |
 | 2026-10-24 | **Route or Adapt (2610.31095)** | **open-loop の offset が良くても closed-loop は悪化し得る。baseline は退化軌道で低 offset (nuPlan)** | [brief](../briefs/2026-10-24/2610.31095.md) |
 | 2026-10-24 | **2610.30953 (推論と軌道の coupling)** | **推論文の書き換えでは軌道が動かず、カメラ黒塗りでは大きく動く (driving VLA)** | [brief](../briefs/2026-10-24/2610.30953.md) |
 | 2026-10-24 | TerraTransfer++ (2610.30319) | NAVSIM navhard + HUGSim closed-loop で評価。demonstration なしで 59.4 EPDMS | [brief](../briefs/2026-10-24/2610.30319.md) |
