@@ -1,19 +1,24 @@
 # Fast Generative Inference — 推論ステップを削る生成 — Living Survey
-最終更新: 2026-11-01
+最終更新: 2026-11-08
 
 > 新設 (2026-W29)。プランナー (P1) と world model (P3) の双方で「反復 denoising を捨てる」
 > 論文が独立に3本以上溜まり、既存2サーベイのどちらにも収まらなくなったため分離した。
 
 ## 一言でいうと
 軌道生成も world model も diffusion / flow matching で書けるようになった一方、車載では **NFE (Number of Function Evaluations; サンプリング時のネットワーク評価回数) がそのままレイテンシ予算**になる。削り方は 7 系統 —— schedule で削る / 学習して削る (one-step drift) / 生成を 1 回にする / 完走しない (early exit) / 本番に載せない / 入力を伸ばさない / 最初から 1 ステップの目的を使う。
-**削る対象は step 数だけでない:** 再帰 rollout (GeoWM・PPWM)・候補ごとの重複 encode (LiteNWM)・renderer (AgentGarten) (W41)、生成そのもの (DirectWAM・MJev-Spatial) と蒸留の目的 (W43)。**W44 は「どこまで削ってよいか」の境界を測る型が出た:** flow-matching VLA は step 数 K と実行区間 H が結び付き、どちらを減らしてよいかは re-plan の頻度で決まる (Horizon-Depth)・行動分布が Gaussian で足りる policy は最終層の置換だけで最大 2 倍速 (GAR; 分岐する場面は未確認)・予測しやすい latent を作れば world model の学習も推論も安い (Predictable Latents)。
+**削る対象は step 数だけでない:** 再帰 rollout・重複 encode・renderer (W41)、生成そのものと蒸留の目的 (W43)、「どこまで削ってよいか」の境界 (W44: Horizon-Depth・GAR)。**W45 は律速そのものが NFE から移っていた:** 入力 token 数 (GATS: LiDAR で 10% に絞っても dense 以上)・自己回帰の逐次生成 (VFlash: drafter が座標を 1 forward pass で出す。約 25 倍は予備的な単一 rollout)・GPU 側の実行 (VLA-Triage・LoopQ: CPU の launch 遅延とメモリ帯域が効き方を決め、Thor では 4 bit にしても速くならない)。
 **捨てても壊れないことは構造で保証できる**のが通奏低音で、削ると失うのは多様性・多峰性、**どこまで削ってよいかは下流タスクが決める。**比較の作法は 2 つ: 少ステップ化には「同じ head を 1 ステップだけ積分したもの」、並列化には「普通の batch」を対照に入れる (W37・W39)。
 
 
 ## 系譜マップ
+- **★ 律速が NFE から移る: 入力 token・逐次生成・GPU 側の実行(2026-W45 新設)**
+  - **入力 token を減らす** — [GATS](../briefs/2026-11-03/2610.40935.md): LiDAR / radar の点が落ちた patch だけを残し、選択を vision backbone の前に置く。25% で nuScenes 3 秒 L2 0.520 m (dense 0.573 m)・EPDMS 88.9 (dense 85.9)・FLOPs 6.6 倍減、10% でも dense 以上、最大 18 倍減。**LiDAR / radar が前提。遠方や疎な対象が落ちる条件は abstract から読めない**
+  - **逐次生成を 1 回にする** — [VFlash](../briefs/2026-11-08/2611.08449.md): autoregressive VLM が座標を 1 token ずつ出す遅さに対し、drafter (本来は speculative decoding の下書き役の小 model) が点・box・trajectory の座標を 1 forward pass でまとめて出す。AR の token 列に合わせず primitive で直接学習。3D の点の運動予測で約 25 倍速 (**予備的な単一 rollout**)。**運転 trajectory の精度は未検証**
+  - **rollout・solver を必要な所だけにする** — [RFWorld](../briefs/2026-11-05/2611.05072.md): 候補ごとの rollout をやめ、共有 scene memory を 1 回作って各候補が sparse に問い合わせる (削減は horizon × 候補数分の論文の見積もり・実測は abstract に無い)。[FreeOcc](../briefs/2026-11-07/2611.08128.md): 自車の動きを SE(2) で除いた 28.3M (同等 model の約 40%) の 4D occupancy 予測。観測が十分な voxel は single-pass、不確かな領域だけ ODE solver。**uncertainty の算出方法は未確認**
+  - **律速を測る** — [VLA-Triage](../briefs/2026-11-06/2611.06710.md): 7 VLA family × 4 GPU (H100〜Jetson Thor) × 7 系統の高速化手法。CPU の kernel launch overhead (GPU に仕事を投げるまでの CPU 側の遅延)・メモリ帯域・kernel 効率が効き方を決め、手法同士が相互作用する。速度向上率は abstract に無い。[LoopQ](../briefs/2026-11-05/2611.05093.md): 量子化 VLA の closed-loop 比較。メモリは 2〜3 倍節約だが速くならず (H100 batch 1 で 1.06〜1.58 倍遅い)、Thor は 4 bit のどの設定でも遅い。pi0.5 ではメモリ律速の action expert が GPU 時間の 63% で 16 bit のまま。**どちらも manipulation 中心。運転 planner では比率が変わりうる**
 - **★ 削る対象が「生成そのもの」「蒸留の目的」へ、そして「どこまで削ってよいか」の境界を測る型(2026-W43〜W44)**
-  - **W44 / step と実行区間の結合** — [Horizon-Depth](../briefs/2026-10-27/2610.32102.md): flow-matching VLA の solver step 数 K と実行区間 H を格子で回し、両者が結び付くことを示す (再学習なしで試せる)。運転は頻繁に re-plan するので「step を減らすと良くなる」側でなく逆側に入る可能性があり、どちらに入るかの測定自体が実験
-  - **W44 / 最終層だけ Gaussian** — [GAR](../briefs/2026-11-01/2610.40271.md): 行動分布が Gaussian でよく近似できる policy は、最終層だけを Gaussian の出力に置換し、対象 state の 0.02% で学習。推論 1 pass・最大 2 倍速で成功率は元に近い。**障害物の左右に分岐する場面で足りるかが未確認**
+  - **W44 / step と実行区間の結合** — [Horizon-Depth](../briefs/2026-10-27/2610.32102.md): flow-matching VLA の solver step 数 K と実行区間 H は結び付く (再学習なしで試せる)。運転は頻繁に re-plan するので「step を減らすと良くなる」側でなく逆側に入る可能性がある
+  - **W44 / 最終層だけ Gaussian** — [GAR](../briefs/2026-11-01/2610.40271.md): 行動分布が Gaussian でよく近似できる policy は、最終層だけを Gaussian の出力に置換し、対象 state の 0.02% で学習。推論 1 pass・最大 2 倍速。**障害物の左右に分岐する場面は未確認**
   - **W44 / 予測しやすい latent・few-step の蒸留** — [Predictable Latents](../briefs/2026-10-28/2610.34663.md): 時間方向に予測しやすい latent で world model の学習と推論が大幅に安い。[IDM](../briefs/2026-11-01/2610.39633.md): DMD (Distribution Matching Distillation; 多 step の diffusion の出力分布に 1〜数 step の generator を寄せる蒸留) で、student の EMA コピーの特徴で moment を合わせる。1〜2 step の text-to-image で細部 (文字など) を正確に描くため
   - **確率的な生成を捨てる** — [DirectWAM](../briefs/2026-10-22/2610.28122.md): 世界予測つきの policy (WAM) は diffusion の反復が遅く、1 ステップに切ると成功率が落ちる。映像側のノイズをやり直しても行動はほとんど変わらないことと、予測誤差に行動に効くものと効かないものがあることに着目し、student の予測した未来を「そこから decode した行動の誤差」で評価して蒸留する。LIBERO 平均 97.1%。**student が teacher の多様性 (multi-modal な行動) を失う可能性があり、運転のように妥当な軌道が複数ある設定は未確認**
   - **生成を scoring に替える** — [MJev-Spatial](../briefs/2026-10-19/2610.22276.md): 候補を class とみなし、attention の Q/K だけでスコアを付けて forward 1 回で決める。軌道を離散化した anchor を候補にする使い方が示唆されるが、**運転の閉ループは未検証・候補集合の外は答えられない**
@@ -126,6 +131,12 @@
 ## 重要論文リスト
 | 日付 | 論文 | 一言 | brief |
 |---|---|---|---|
+| 2026-11-08 | VFlash (2611.08449) | drafter が点・box・trajectory の座標を 1 forward pass で出し AR の逐次生成を置換。約 25 倍速 (予備的な単一 rollout・manipulation) | [brief](../briefs/2026-11-08/2611.08449.md) |
+| 2026-11-07 | FreeOcc (2611.08128) | 自車の動きを除いた 28.3M の 4D occupancy 予測。不確かな領域だけ ODE、他は single-pass (27 FPS は ensemble 版) | [brief](../briefs/2026-11-07/2611.08128.md) |
+| 2026-11-06 | VLA-Triage (2611.06710) | 7 VLA × 4 GPU (Thor 含む) で律速を測定。CPU launch・メモリ帯域が手法の効きを決め、手法同士が相互作用 (速度向上率は abstract に無い) | [brief](../briefs/2026-11-06/2611.06710.md) |
+| 2026-11-05 | RFWorld (2611.05072) | 候補ごとの rollout をやめ、共有 scene memory への sparse readout で評価。削減は horizon × 候補数分の見積もり (実測なし) | [brief](../briefs/2026-11-05/2611.05072.md) |
+| 2026-11-05 | LoopQ (2611.05093) | 量子化 VLA の closed-loop 比較。メモリ 2〜3 倍減でも速くならず、Thor は 4 bit で全て遅い (manipulation) | [brief](../briefs/2026-11-05/2611.05093.md) |
+| 2026-11-03 | GATS (2610.40935) | LiDAR で token を選び 25% でも dense 以上 (L2 0.520 vs 0.573 m)、FLOPs 6.6 倍減。10% でも上回る。LiDAR 前提 | [brief](../briefs/2026-11-03/2610.40935.md) |
 | 2026-11-01 | IDM (2610.39633) | DMD に student の EMA コピーの特徴で moment を合わせる損失。1〜2 step の text-to-image (hf 243) | [brief](../briefs/2026-11-01/2610.39633.md) |
 | 2026-11-01 | GAR (2610.40271) | flow policy の最終層だけ Gaussian に置換。対象 state の 0.02% で学習・最大 2 倍速 | [brief](../briefs/2026-11-01/2610.40271.md) |
 | 2026-10-28 | Predictable Latents (2610.34663) | 時間方向に予測しやすい latent で world model の学習・推論が安くなる | [brief](../briefs/2026-10-28/2610.34663.md) |
@@ -166,6 +177,8 @@
 | 2026-07-09 | RynnWorld-4D (2607.06559) | 4D 予測 + 1-forward で行動を出す | [brief](../briefs/2026-07-09/2607.06559.md) |
 
 ## Open Questions
+- **★ 手元の Thor で、NFE を削る前の律速は GPU 計算か CPU の launch か**(VLA-Triage × LoopQ)— eager と CUDA graphs で 1 回の推論の GPU 時間と CPU launch 時間を分けて測る。CPU 側が律速なら step を削っても効かず、メモリ律速の action 側なら量子化より先にそこを削る
+- **★ 「token を減らすと良くなる」は手元の E2E でも成り立つか**(GATS)— 先にランダムに 25% / 10% に落とす ablation を回し、dense と悪化しなければ成立。選択基準 (LiDAR 投影 / 視覚特徴 / ランダム) を同じ budget で比べ、遠方・小物の網羅率が下がるか見る
 - **★ 1ステップ生成の利得は「目的関数」か「ステップ数」か**(10915)— **対照は「同じ diffusion head を1ステップだけ積分したもの」。これを入れずに勝っても何も言えない。**比べる量は minADE (多峰性の被覆) / 推論時間 / シーンごとの候補の散らばり の3つ
 - **★ 「監督を当てる範囲を広げる」と「ステップ数を削る」は同じ軸か**(04010 × 10915)— **Uno は 1 位置 → 複数位置の同時分布へ広げることで速くなり、IMLE は 1 ステップの目的関数で速くなる。どちらも「複数の出力を同時に決める」形をしている。**同じ軸なら P2 の「監督範囲」軸と本サーベイが接続する
 - **★ 「入力を伸ばさない」を運転に移せるか**(13546)— **外部倉庫が持つのはシーンの幾何であり、

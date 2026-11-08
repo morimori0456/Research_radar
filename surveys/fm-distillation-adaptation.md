@@ -1,21 +1,21 @@
 # Foundation Model Distillation & Adaptation — Living Survey
-最終更新: 2026-11-01
+最終更新: 2026-11-08
 
 ## 一言でいうと
 大きな基盤モデルの能力を**小さく・低メモリ・ローカル実行可能**な形に移し、他ドメイン・他機種へ適合させる方法を追う分野。適合の評価軸は「同じ適合精度のときにどれだけ忘れたか」で、足元の確認は「更新が丸めで消えていないか」(bf16 のまま fine-tuning すると更新の 79% 以上が消える; fp32 master copy で直る)。
-**蒸留の recipe は「何を先に決めるか」の順序問題で (W40)、OPD (on-policy distillation; student 自身の生成物の上で teacher に合わせる蒸留) は teacher の教えを一様に真似ない方向へ進み (W43: 守る・重みを付ける・足す・平均する)、W44 は gap を loss でなく教材で埋める方向が揃った:** student の rollout (MPOPD)・teacher の軌跡 (CARD)・語句ごとの信頼 (RSKD)・蒸留前の teacher 選び (ESC)。異種 architecture は特徴を揃えず prototype 経由 (RPKD)。
-**適合の型は「backbone を凍結し、更新する箇所を小さく限定し、絞ったデータで合わせる」(W41〜W44):** expert と router だけ (DS-Upcycling)・最終層だけ (GAR)・residual adapter (GRAFT)・末尾 8 block + embedding (AQL-Lite)。**検証の大半は LLM / manipulation で、運転・視覚への移植は「成功」「reward」「分岐する場面」の定義が先。**
+**蒸留の recipe は「何を先に決めるか」の順序問題で (W40)、OPD (on-policy distillation; student 自身の生成物の上で teacher に合わせる蒸留) は teacher の教えを一様に真似ない方向へ進み (W43〜W44)、W45 は loop の機構が分解された:** 信号が更新になる conversion と更新が次の rollout を変える broadcast (offline 蒸留を先に挟むと後の OPD が伸びる)。
+**適合の型は「backbone を凍結し、更新する箇所を小さく限定し、絞ったデータで合わせる」(W41〜W44)、W45 は「元の model を教師・制約にして守る」が加わった:** 逐次 LoRA の safety 保持は replay だと過剰拒否が +53.4 pt、distillation は +5.1 pt、sim→実の忘却は 1% の replay で大半が戻る。LoRA は SFT と RL で挙動が逆。**検証の大半は LLM / manipulation で、運転・視覚への移植は「成功」「reward」の定義が先。**
 
 
 ## 系譜マップ
-- **★ gap を「教材の作り方」で埋め、適合は「更新する箇所を限定」する —— teacher をどこまで信じるか(2026-W43〜W44 の芯)**
-  - **W44 / student の rollout を直す** — [MPOPD](../briefs/2026-10-30/2610.36477.md): rollout の分布を student と teacher の geometric mixture (確率を重み付きで掛けて正規化した混合) に近い proposal にして、teacher の supervision が不安定な外れ領域を避ける。16 benchmark で OPD 超え、Qwen3-4B-Base の数学 +6.91・生成長 41% 減。**LLM の text 推論のみ**
-  - **W44 / teacher の軌跡を直す** — [CARD](../briefs/2026-10-30/2610.36445.md): 既存の軌跡を RL で「student の分布に合う・筋の通った教える軌跡」に変換 (再 sampling なし)。OOD で特に伸びる。**変換 model の追加 cost は abstract に無い・LLM のみ**
-  - **W44 / 信頼を語句ごとに変える・teacher を蒸留前に選ぶ** — [RSKD](../briefs/2026-10-28/2610.34689.md): 運転 VLM の蒸留で、teacher の予測が正解と意味的に一致する語句は蒸留 loss (JSD)、一致しない語句は正解ラベルの loss を強める (DrivingVQA / LingoQA; closed-loop との関係は未確認)。[ESC](../briefs/2026-10-31/2610.39020.md): 次 token の entropy の系列の一致度 (Entropy Shape Correlation) で、蒸留せずに teacher の良し悪しを予測する
-  - **W44 / 特徴空間を揃えない** — [RPKD](../briefs/2026-10-31/2610.37937.md): ランダムに固定した prototype との類似度で teacher と student を比べる。異種 architecture 向け OFA 比で ImageNet-100 最大 +12.44% (分類のみ・最大値)。[IDM](../briefs/2026-11-01/2610.39633.md): student の EMA コピーの特徴で moment を合わせる DMD (few-step 画像生成の蒸留)
-  - **W44 / 更新する箇所を限定する適合** — [DS-Upcycling](../briefs/2026-11-01/2610.40091.md): ドメインごとに expert と router だけを更新、router の教師は 1 ドメイン 256 例で routing accuracy 90-98% (LLM のみ)。[GAR](../briefs/2026-11-01/2610.40271.md): flow policy の最終層だけを Gaussian に置換、対象 state の 0.02% で学習・最大 2 倍速 (障害物の左右に分岐する場面で足りるかは未確認)。[GRAFT](../briefs/2026-10-29/2610.36507.md): 凍結 backbone に residual adapter、元ドメインでは補正ゼロの regularization、privileged な地形情報から搭載 depth へ蒸留。[GIFT](../briefs/2026-10-28/2610.35374.md): Householder reflection で表現の幾何を保つ PEFT、未知天候への汎化
-  - **W44 / 学習時だけの teacher・出力形式を変える適合** — [Ground-to-Satellite](../briefs/2026-10-29/2610.37021.md): 推論時に無い地上写真を teacher に衛星 embedding の分類器を蒸留、時間・地理の shift で差が広がる。[LayerEditor](../briefs/2026-10-26/2610.24738.md): 出力形式を変える適合で、凍結した元 model を teacher に完成画像と再構成画像の両方へ prior を蒸留 (abstract に数値なし)。[Reuse, Don't Retrain](../briefs/2026-10-27/2610.32566.md): 凍結した大 teacher の patch 特徴合わせだけで同サイズの公開 model を mIoU 2〜3 点上回る (事前学習コストの約 0.5%・衛星画像)
-  - **W44 / 足元の確認: dtype** — [fp32 master copy](../briefs/2026-10-27/2610.31859.md): bf16 のまま full-weight fine-tuning すると weight の 1/512 未満の更新が丸めで消え (LIBERO で 79% 以上)、12 codebase 中 9 が該当。fp32 copy で SmolVLA 4.3 → 49.3%・π0.5 5.1 → 80.9%。**適合が効かない原因を手法に帰す前に確認する項目**
+- **★ 適合を小さく保ち、元の model を教師・制約にして守る —— OPD の loop を分解し、適合の副作用を測る(2026-W45 の芯)**
+  - **OPD: 機構と recipe** — [SD-OPD](../briefs/2026-11-07/2611.07722.md): 言い回し位置の teacher-student の log-prob 差は数学的内容の位置の 3.5 倍。student と base の差 (中心化) を係数にし、teacher の feedback と符号が一致する token だけ残す。Qwen3 1.7B〜8B で数学 6 task の pass@1 が OPD より +7.76〜10.37 pp (数学のみ)。[Learning Dynamics of OPD](../briefs/2026-11-07/2611.08016.md): loop を conversion / broadcast の 2 段階に分解し、teacher と食い違うのに student が動かない現象と、局所的に近づくのに劣化する現象を説明。offline 蒸留だけでは held-out はあまり上がらないが、その後の OPD が大きく伸びる (LLM post-training のみ)。[SurgPace](../briefs/2026-11-04/2611.03125.md): 確信度 + Lorentz 幾何の score で easy-to-hard の curriculum を組み、loss は teacher 模倣から task 教師へ schedule (手術 MLLM・abstract に数値なし)
+  - **逐次 / 少データ適合で元の能力を守る** — [2610.38001](../briefs/2026-11-02/2610.38001.md): Mistral-7B で逐次 LoRA の safety は、replay が ASR を 51.1 pt 下げるが over-refusal も +53.4 pt、元 model への distillation だけだと ASR −5.4 pt・over-refusal +5.1 pt。併用で over-refusal が和らぐ。refusal direction の保持は振る舞いの安全の代理にならない (LLM safety のみ)。[Frozen in Time](../briefs/2026-11-03/2610.40857.md): 物理基盤 model Walrus-1.3B の sim 適合で元の事前学習データの誤差が最大 35 倍、実験データ学習中に sim を 1% 混ぜるだけで大半が戻る (PDE のみ)。[AEGIS](../briefs/2026-11-05/2611.05003.md): SFT の一般能力の劣化 (PCD) を feature interference で説明し、競合 token の margin の drift を抑える loss (14 task・計算 1.3 倍・LLM のみ)。[RAFT](../briefs/2026-11-05/2611.04368.md): reasoning 注釈で adapter を先に学習→凍結→行動を学ぶ 2 段階で、実機 OOD 成功率 27.9 → 75.0% (manipulation のみ)
+  - **適合の位置を測る・凍結 + 小さな補正** — [AquaProbe](../briefs/2026-11-03/2610.40900.md): clean / 劣化の画像対でギャップが生まれる層を測り、LoRA の rank を比例配分。同予算の一様配分より +1.9 mIoU (SUIM のみ・差は小さい)。[ReTailor](../briefs/2026-11-06/2611.05811.md): 凍結 model に residual Feature Tailor だけを足し、未知 sensor へ自己教師で適合 (LoRA 比で優位とあるが数値は abstract に無い・pansharpening)。[CAT-CKD](../briefs/2026-11-04/2611.03528.md): 凍結 ViT + ConvPass adapter (4.3M) で共有特徴空間を作り、複数 source model の logit の consensus を教師に source-free 適合 (皮膚がん 5 dataset・平均 AUROC 86.1%)
+  - **LoRA の挙動** — [Spectral and Subspace Dynamics of LoRA](../briefs/2026-11-08/2611.08414.md): LoRA 更新の spectrum は RL で集中、SFT で広がり、原因は group-mean baseline subtraction (同 prompt の複数応答の報酬の平均を引く計算)。段階別に flatten して調整 (数学 reasoning のみ)。[Model Merging Does Not Require Uniform LoRA Ranks](../briefs/2026-11-06/2611.06486.md): domain ごとの rank でも averaging は劣化せず最大 +1.8 pp。magnitude で選ぶ merge は特異値の小さい adapter を消し、IFEval が 16〜25 pp 低下 (LLM のみ)
+- **gap を「教材の作り方」で埋め、適合は「更新する箇所を限定」する —— teacher をどこまで信じるか(2026-W43〜W44)**
+  - **W44 / 教材で gap を埋める** — [MPOPD](../briefs/2026-10-30/2610.36477.md) (rollout を student と teacher の geometric mixture に寄せる・Qwen3-4B-Base 数学 +6.91・生成長 41% 減)、[CARD](../briefs/2026-10-30/2610.36445.md) (teacher の軌跡を RL で student 向けに変換)、[RSKD](../briefs/2026-10-28/2610.34689.md) (運転 VLM で語句ごとに JSD と正解ラベルを切替)、[ESC](../briefs/2026-10-31/2610.39020.md) (entropy の系列の一致度で蒸留前に teacher を選ぶ)、[RPKD](../briefs/2026-10-31/2610.37937.md) / [IDM](../briefs/2026-11-01/2610.39633.md) (特徴空間を揃えない)。いずれも LLM / 分類 / 画像生成が中心
+  - **W44 / 更新箇所を限定する適合・足元の確認** — [DS-Upcycling](../briefs/2026-11-01/2610.40091.md) (expert と router のみ・256 例で routing 90-98%)、[GAR](../briefs/2026-11-01/2610.40271.md) (flow policy の最終層のみ・state の 0.02% で学習。分岐場面は未確認)、[GRAFT](../briefs/2026-10-29/2610.36507.md) (凍結 backbone + residual adapter・元ドメインは補正ゼロ)、[GIFT](../briefs/2026-10-28/2610.35374.md) (Householder reflection で幾何を保つ PEFT)。学習時だけの teacher: [Ground-to-Satellite](../briefs/2026-10-29/2610.37021.md)・[LayerEditor](../briefs/2026-10-26/2610.24738.md)・[Reuse, Don't Retrain](../briefs/2026-10-27/2610.32566.md)。**足元: [fp32 master copy](../briefs/2026-10-27/2610.31859.md) — bf16 の full fine-tuning は更新の 79% 以上が丸めで消える (LIBERO)。適合が効かない原因を手法に帰す前に確認**
   - **守る: 成功していた選択を削らない** — [SPOD](../briefs/2026-10-21/2610.25034.md): OPD には repair (student の弱い判断を直す) と erosion (teacher が好まないが成功していた選択を削る) が同時に働き、序盤は repair が勝って teacher を超え、続けると erosion が勝つ (distillation overshoot)。成功 episode で teacher と衝突する部分を mask し、確率に soft floor を入れる。最終 checkpoint が通常 OPD の途中の最良より 6 設定すべてで良い。**LLM agent のみ・運転では「成功」の定義が先**
   - **重みを付ける: student に効く箇所だけ強く** — [AOPD](../briefs/2026-10-24/2610.31563.md): teacher の行動を student の下での counterfactual advantage で重み付け。importance weight × 最終 reward で推定でき追加 rollout は不要。数学・コード・MedQA。[Nash-MOPD](../briefs/2026-10-21/2610.26124.md): teacher が複数のときの domain 配分で、改善が最も遅い domain を底上げ (local minimax)。1.5B で step 100 の時点で baseline の最終成績を超える。**どちらも LLM の推論課題のみ**
   - **足す: 最終層の外** — [OPTD](../briefs/2026-10-22/2610.28048.md): 層間の log-probability の増分も合わせる。正解した応答ほど teacher との層間 transition の KL が小さいという診断が根拠で、gap の回復率が約 75% → 約 90% (3 domain)。**teacher と student が語彙を共有する LLM が前提**。[OnQ](../briefs/2026-10-23/2610.29378.md): 2〜3 bit の量子化の再学習を student 自身の生成の上で行い、候補ごとに forward/reverse KL を切り替える Dynamic KL を使う。2 bit で全 baseline を上回る (8B で +10.26)
@@ -479,6 +479,18 @@
 ## 重要論文リスト
 | 日付 | 論文 | 一言 | brief |
 |---|---|---|---|
+| 2026-11-08 | Spectral and Subspace Dynamics of LoRA (2611.08414) | LoRA 更新の spectrum は RL で集中・SFT で広がる。原因は group-mean baseline subtraction で、段階別に flatten して調整 (数学 reasoning のみ) | [brief](../briefs/2026-11-08/2611.08414.md) |
+| 2026-11-07 | **SD-OPD** (2611.07722) | **言い回し位置の差が内容位置の 3.5 倍。student と base の差を係数に符号一致 token だけ残し、Qwen3 1.7B〜8B で数学 pass@1 が OPD より +7.76〜10.37 pp (数学のみ)** | [brief](../briefs/2026-11-07/2611.07722.md) |
+| 2026-11-07 | **Learning Dynamics of OPD** (2611.08016) | **OPD の loop を conversion / broadcast に分解。offline 蒸留を先に挟むと後の OPD が伸びる (LLM のみ・解析)** | [brief](../briefs/2026-11-07/2611.08016.md) |
+| 2026-11-06 | ReTailor (2611.05811) | 凍結 model に residual Feature Tailor だけを足し、未知 sensor へ自己教師で適合。数値は abstract に無い (pansharpening) | [brief](../briefs/2026-11-06/2611.05811.md) |
+| 2026-11-06 | Model Merging Does Not Require Uniform LoRA Ranks (2611.06486) | domain ごとの rank でも averaging は劣化せず最大 +1.8 pp。magnitude 選択は小さい adapter を消し IFEval が 16〜25 pp 低下 (LLM のみ) | [brief](../briefs/2026-11-06/2611.06486.md) |
+| 2026-11-05 | RAFT (2611.04368) | reasoning 注釈で adapter を先に学習→凍結→行動。実機 OOD 成功率 27.9 → 75.0% (manipulation のみ) | [brief](../briefs/2026-11-05/2611.04368.md) |
+| 2026-11-05 | AEGIS (2611.05003) | SFT の一般能力の劣化を feature interference で説明し、margin の drift を抑える loss。14 task・計算 1.3 倍 (LLM のみ) | [brief](../briefs/2026-11-05/2611.05003.md) |
+| 2026-11-04 | SurgPace (2611.03125) | 確信度 + Lorentz 幾何の curriculum と、teacher 模倣→task 教師への loss schedule (手術 MLLM・数値は abstract に無い) | [brief](../briefs/2026-11-04/2611.03125.md) |
+| 2026-11-04 | CAT-CKD (2611.03528) | 凍結 ViT + adapter (4.3M) と複数 source の consensus 蒸留で source-free 適合。皮膚がん 5 dataset・平均 AUROC 86.1% | [brief](../briefs/2026-11-04/2611.03528.md) |
+| 2026-11-03 | **Frozen in Time** (2610.40857) | **物理基盤 model の sim 適合で元データの誤差が最大 35 倍。sim を 1% 混ぜる replay で大半が戻る (PDE のみ)** | [brief](../briefs/2026-11-03/2610.40857.md) |
+| 2026-11-03 | AquaProbe (2610.40900) | ギャップが生まれる層を測って LoRA rank を配分。同予算の一様配分より +1.9 mIoU (SUIM のみ) | [brief](../briefs/2026-11-03/2610.40900.md) |
+| 2026-11-02 | **Sequential LoRA の safety 保持** (2610.38001) | **distillation は ASR −5.4 pt・over-refusal +5.1 pt、replay は over-refusal +53.4 pt。併用で和らぐ (Mistral・LLM safety のみ)** | [brief](../briefs/2026-11-02/2610.38001.md) |
 | 2026-11-01 | DS-Upcycling (2610.40091) | ドメインごとに expert と router だけを更新する少データ適合。router の教師は 256 例・routing accuracy 90-98% (LLM のみ) | [brief](../briefs/2026-11-01/2610.40091.md) |
 | 2026-11-01 | GAR (2610.40271) | flow policy の最終層だけを Gaussian に置換。対象 state の 0.02% で学習・最大 2 倍速 (分岐場面は未確認) | [brief](../briefs/2026-11-01/2610.40271.md) |
 | 2026-10-31 | **ESC** (2610.39020) | **次 token の entropy の系列の一致度で、蒸留前に teacher を選ぶ** | [brief](../briefs/2026-10-31/2610.39020.md) |
@@ -759,6 +771,9 @@
 - capacity gap を跨げる interpreter サイズの下限(0.6B/1.5B/4B スイープ)
 - 集計 loss に見えない挙動シフトは、軌道生成のような非言語 token 列でも per-token 診断で検出できるか?
 - 蒸留の目的関数を deploy 時挙動(量子化後)に張り替えると、capacity gap 大の設定で効くか?(MIPI の移植)
+- **逐次適合で元の能力を守る 3 手段 (1% replay・元 model への KL 項・AEGIS の margin 制約) は、同じ設定・同じデータ量でどれが効くか**(40857 × 38001 × 05003) — 3 本は別設定で測られていて比較がない。replay の割合 (0.1 / 1 / 10%) と KL の重みを振る曲線を 1 枚
+- **SD-OPD の「言い回し位置の差が内容位置の 3.5 倍」は数学以外 (VLM・運転の蒸留) で何の位置に相当するか**(07722 × 08016) — teacher-student の log-prob 差を位置別に集計するだけで先に確認できる。offline 蒸留を挟む前後で SD-OPD の利得が変わるかも同じ設定で
+- **手元の複数 domain の LoRA を merge したとき、magnitude 選択で特異値の小さい adapter が消えていないか**(06486) — merge 後の domain 別評価と adapter ごとの特異値の並びを見るだけ
 
 ## 自分の実験・メモ
 (本人が自由に書く欄。週次レビューは消さない)
